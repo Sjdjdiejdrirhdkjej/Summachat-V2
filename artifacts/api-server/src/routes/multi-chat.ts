@@ -79,14 +79,9 @@ async function callSummarizer(
     .map((r) => `### ${r.label}\n${r.response}`)
     .join("\n\n");
 
-  const systemPrompt = `You are a synthesis expert. The user sent a prompt to multiple AI models. Your task is to:
-1. Review all model responses in context of the original prompt
-2. Identify agreements, disagreements, and unique insights from each model
-3. Provide a concise, balanced synthesis that highlights the best ideas from each response
+  const systemPrompt = `You are a summariser. You will be given a user's question and several responses to it. Write a single, clear, concise summary of those responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
 
-Be specific about which model contributed which insight when relevant.`;
-
-  const userMessage = `Original user prompt:\n"${prompt}"\n\nModel responses:\n\n${responseBlock}\n\nPlease synthesize these responses.`;
+  const userMessage = `User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nSummarise these responses.`;
 
   let full = "";
   const stream = await openai.chat.completions.create({
