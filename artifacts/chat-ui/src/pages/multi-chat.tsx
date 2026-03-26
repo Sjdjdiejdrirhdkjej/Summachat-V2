@@ -1,83 +1,109 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
+import { getFingerprint } from "@/lib/fingerprint";
+import { saveChat, getChat, deriveChatTitle } from "@/lib/chat-store";
+import type { ModelId, Turn, ModelState } from "@/types/chat";
 
 const MODELS = [
   {
-    id: "gpt-5.2" as const,
+    id: "gpt-5.2" as ModelId,
     label: "GPT 5.4 High",
     provider: "OpenAI",
     color: "bg-emerald-500",
     borderColor: "border-emerald-500",
     headerClass: "bg-emerald-950/60 border-emerald-800",
     chipActive: "bg-emerald-900/60 border-emerald-500 text-emerald-300",
-    chipInactive: "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+    chipInactive:
+      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
     icon: "⬡",
   },
   {
-    id: "claude-opus-4-6" as const,
+    id: "claude-opus-4-6" as ModelId,
     label: "Claude Opus 4.6",
     provider: "Anthropic",
     color: "bg-orange-500",
     borderColor: "border-orange-500",
     headerClass: "bg-orange-950/60 border-orange-800",
     chipActive: "bg-orange-900/60 border-orange-500 text-orange-300",
-    chipInactive: "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+    chipInactive:
+      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
     icon: "◈",
   },
   {
-    id: "gemini-3.1-pro-preview" as const,
+    id: "gemini-3.1-pro-preview" as ModelId,
     label: "Gemini 3.1 Pro",
     provider: "Google",
     color: "bg-blue-500",
     borderColor: "border-blue-500",
     headerClass: "bg-blue-950/60 border-blue-800",
     chipActive: "bg-blue-900/60 border-blue-500 text-blue-300",
-    chipInactive: "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+    chipInactive:
+      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
     icon: "✦",
   },
 ] as const;
-
-type ModelId = (typeof MODELS)[number]["id"];
 
 const MODEL_MAP = Object.fromEntries(MODELS.map((m) => [m.id, m])) as Record<
   ModelId,
   (typeof MODELS)[number]
 >;
 
-type ModelState = {
-  content: string;
-  status: "idle" | "streaming" | "done" | "error";
-  error?: string;
-};
-
-type Turn = {
-  id: string;
-  prompt: string;
-  selectedModels: ModelId[];
-  models: Partial<Record<ModelId, ModelState>>;
-  summary: string;
-  summaryStatus: "idle" | "streaming" | "done" | "error";
-};
-
 type AppStatus = "idle" | "streaming";
 
-export default function MultiChat() {
+interface Props {
+  chatId: string;
+}
+
+export default function MultiChat({ chatId }: Props) {
+  const [, navigate] = useLocation();
   const [selectedModels, setSelectedModels] = useState<Set<ModelId>>(
     new Set(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[])
   );
   const [prompt, setPrompt] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [appStatus, setAppStatus] = useState<AppStatus>("idle");
+  const [fp, setFp] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    getFingerprint().then(setFp);
+  }, []);
+
+  useEffect(() => {
+    const stored = getChat(chatId);
+    if (stored) {
+      setTurns(stored.turns);
+      setSelectedModels(new Set(stored.selectedModels));
+    } else {
+      setTurns([]);
+    }
+  }, [chatId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
+
+  const persistChat = useCallback(
+    (nextTurns: Turn[], models: Set<ModelId>) => {
+      if (!fp) return;
+      saveChat({
+        id: chatId,
+        fingerprint: fp,
+        title: deriveChatTitle(nextTurns),
+        selectedModels: Array.from(models) as ModelId[],
+        turns: nextTurns,
+        createdAt: getChat(chatId)?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      });
+    },
+    [chatId, fp]
+  );
 
   const toggleModel = (id: ModelId) => {
     if (appStatus === "streaming") return;
@@ -117,12 +143,11 @@ export default function MultiChat() {
       summaryStatus: "idle",
     };
 
-    setTurns((prev) => [...prev, newTurn]);
+    const nextTurns = [...turns, newTurn];
+    setTurns(nextTurns);
 
     const updateTurn = (updater: (t: Turn) => Turn) => {
-      setTurns((prev) =>
-        prev.map((t) => (t.id === turnId ? updater(t) : t))
-      );
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? updater(t) : t)));
     };
 
     try {
@@ -167,7 +192,6 @@ export default function MultiChat() {
                   },
                 }));
                 break;
-
               case "model_chunk":
                 if (!modelId || !event.content) break;
                 updateTurn((t) => ({
@@ -181,7 +205,6 @@ export default function MultiChat() {
                   },
                 }));
                 break;
-
               case "model_done":
                 if (!modelId) break;
                 updateTurn((t) => ({
@@ -192,7 +215,6 @@ export default function MultiChat() {
                   },
                 }));
                 break;
-
               case "model_error":
                 if (!modelId) break;
                 updateTurn((t) => ({
@@ -207,11 +229,9 @@ export default function MultiChat() {
                   },
                 }));
                 break;
-
               case "summary_start":
                 updateTurn((t) => ({ ...t, summaryStatus: "streaming" }));
                 break;
-
               case "summary_chunk":
                 if (!event.content) break;
                 updateTurn((t) => ({
@@ -219,11 +239,9 @@ export default function MultiChat() {
                   summary: t.summary + event.content,
                 }));
                 break;
-
               case "summary_done":
                 updateTurn((t) => ({ ...t, summaryStatus: "done" }));
                 break;
-
               case "summary_error":
                 updateTurn((t) => ({ ...t, summaryStatus: "error" }));
                 break;
@@ -232,6 +250,10 @@ export default function MultiChat() {
         }
       }
 
+      setTurns((finalTurns) => {
+        persistChat(finalTurns, selectedModels);
+        return finalTurns;
+      });
       setAppStatus("idle");
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -241,28 +263,42 @@ export default function MultiChat() {
       console.error(err);
       setAppStatus("idle");
     }
-  }, [prompt, appStatus, selectedModels]);
+  }, [prompt, appStatus, selectedModels, turns, persistChat]);
 
   const handleStop = () => {
     abortRef.current?.abort();
     setAppStatus("idle");
   };
 
-  const canSend = prompt.trim().length > 0 && selectedModels.size >= 2 && appStatus === "idle";
+  const handleNew = () => {
+    const id = crypto.randomUUID();
+    navigate(`/chat/${id}`);
+  };
+
+  const canSend =
+    prompt.trim().length > 0 &&
+    selectedModels.size >= 2 &&
+    appStatus === "idle";
 
   return (
     <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
       <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
               S
             </div>
-            <div className="leading-tight">
-              <h1 className="text-sm font-semibold tracking-tight">summachat V2</h1>
+            <div className="leading-tight text-left">
+              <h1 className="text-sm font-semibold tracking-tight">
+                summachat V2
+              </h1>
               <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
             </div>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2">
             {appStatus === "streaming" && (
@@ -276,17 +312,16 @@ export default function MultiChat() {
                 Stop
               </Button>
             )}
-            {turns.length > 0 && appStatus === "idle" && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-gray-500 hover:text-gray-300 h-8 text-xs"
-                onClick={() => setTurns([])}
-              >
-                Clear
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-gray-500 hover:text-gray-300 h-8 text-xs"
+              onClick={handleNew}
+              disabled={appStatus === "streaming"}
+            >
+              New Chat
+            </Button>
           </div>
         </div>
 
@@ -303,7 +338,8 @@ export default function MultiChat() {
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
                   active ? m.chipActive : m.chipInactive,
-                  appStatus === "streaming" && "opacity-50 cursor-not-allowed"
+                  appStatus === "streaming" &&
+                    "opacity-50 cursor-not-allowed"
                 )}
               >
                 <span
@@ -322,6 +358,10 @@ export default function MultiChat() {
             <span className="text-[11px] text-red-400">Select at least 2</span>
           )}
         </div>
+
+        <p className="text-[10px] text-gray-800 font-mono truncate">
+          /chat/{chatId}
+        </p>
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -337,7 +377,7 @@ export default function MultiChat() {
         ) : (
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-8">
             {turns.map((turn) => {
-              const modelList = turn.selectedModels.map((id) => MODEL_MAP[id]);
+              const modelList = turn.selectedModels.map((id) => MODEL_MAP[id]).filter(Boolean);
               return (
                 <div key={turn.id} className="space-y-4">
                   <div className="flex justify-end">
@@ -357,7 +397,10 @@ export default function MultiChat() {
                     {modelList.map((m) => {
                       const ms = turn.models[m.id];
                       return (
-                        <div key={m.id} className="flex flex-col bg-gray-950 min-h-[120px]">
+                        <div
+                          key={m.id}
+                          className="flex flex-col bg-gray-950 min-h-[120px]"
+                        >
                           <div
                             className={cn(
                               "flex items-center gap-2 px-3 py-2 border-b",
@@ -386,7 +429,9 @@ export default function MultiChat() {
                                 Waiting…
                               </div>
                             ) : ms.status === "error" ? (
-                              <p className="text-xs text-red-400">{ms.error ?? "Error"}</p>
+                              <p className="text-xs text-red-400">
+                                {ms.error ?? "Error"}
+                              </p>
                             ) : (
                               <div className="text-xs">
                                 <Markdown>{ms.content}</Markdown>
@@ -406,14 +451,16 @@ export default function MultiChat() {
                       <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
                         ∑
                       </div>
-                      <div className="bg-gray-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-gray-200 whitespace-pre-wrap min-w-[120px]">
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-gray-200 min-w-[120px]">
                         {turn.summaryStatus === "idle" ? (
                           <span className="flex items-center gap-1.5 text-xs text-gray-600">
                             <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
                             Waiting for models…
                           </span>
                         ) : turn.summaryStatus === "error" ? (
-                          <span className="text-xs text-red-400">Summary failed.</span>
+                          <span className="text-xs text-red-400">
+                            Summary failed.
+                          </span>
                         ) : (
                           <>
                             <Markdown>{turn.summary}</Markdown>
