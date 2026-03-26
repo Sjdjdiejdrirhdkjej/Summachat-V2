@@ -156,6 +156,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      opencode-ai:
+        specifier: ^1.3.2
+        version: 1.3.2
     devDependencies:
       prettier:
         specifier: ^3.8.1
@@ -172,6 +176,15 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/integrations-anthropic-ai':
+        specifier: workspace:*
+        version: link:../../lib/integrations-anthropic-ai
+      '@workspace/integrations-gemini-ai':
+        specifier: workspace:*
+        version: link:../../lib/integrations-gemini-ai
+      '@workspace/integrations-openai-ai-server':
+        specifier: workspace:*
+        version: link:../../lib/integrations-openai-ai-server
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -2711,6 +2724,70 @@ packages:
         optional: true
       zod:
         optional: true
+
+  opencode-ai@1.3.2:
+    resolution: {integrity: sha512-InyDAXKoh+fVxWrBMJZaf1xIYpASZ2zX4O/u7nwtiYzxy/kqHySvQe9jDVrhMgbMdb4CXzACid7M2HDUa+vz2Q==}
+    hasBin: true
+
+  opencode-darwin-arm64@1.3.2:
+    resolution: {integrity: sha512-/7V+J3XZGF/sCdMbEb5E3mUvuOIVvGkVjgYH1k/pnTfdGaPW/C7RgW2dU2HedXvkw4Y3CplUS+5VfA/F5kufXw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  opencode-darwin-x64-baseline@1.3.2:
+    resolution: {integrity: sha512-jBusp8Vb1wsGKHD2AOD+Cr4qL4zSDut80Sy0CnMH8AwnSCNzaSVi2wnE/7vPrgCa44Xr0MknSE2S0wHQ5SbLaw==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-darwin-x64@1.3.2:
+    resolution: {integrity: sha512-J7HgNBUoDpsKHAiky18aUm4xMKmUIJqlvVMkvL9NVjwDRMuAKnbYcxpRK8O+NKzeVx29IWwX8zizUwCuqXAAlA==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-linux-arm64-musl@1.3.2:
+    resolution: {integrity: sha512-ZOB6+NvkZ19mzi6j4VAHtQDAeTXvQJqg4YtclT3wbMof8y3jn5S8vUmaXLk9d9FryEcdIoMK/oFLkcLkS1OXpA==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-arm64@1.3.2:
+    resolution: {integrity: sha512-+q0PJ86LPitMIGf9sGXdtOcwpdiwbzdw91zXAHFe7rXZZm4Cvu9qjvt6WT/lKJqL8f6pyJs9Kbt4XJ/C20swQA==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-x64-baseline-musl@1.3.2:
+    resolution: {integrity: sha512-8XYcAqZBcUgYHfae9qoTT8erqFjd6AKTrSu60gRgzTN8cUybG4iPyAVt4GUcXCzUw44Qo++d/8I9hwpUTCoFYg==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-baseline@1.3.2:
+    resolution: {integrity: sha512-QXiF1+PJH5AOHMSTdYngOB7yWULFQKJpIbx77ZHM1MKyxiBweIrZ03nG86iXIZIVGBxEfH1CcKDU28lFGUJdNg==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-musl@1.3.2:
+    resolution: {integrity: sha512-o4aXgcWQidxQ6cJMsgLcCMv9MSKtLEqm3OAFm6eN7hVgHV9m7rz035BICNZ1YLltIEdQYAHXx5MGM21J4/vBdw==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64@1.3.2:
+    resolution: {integrity: sha512-/+OtuHr2O0/QKpBrZBnutr0ZLe+LmOx003Z99b21BgG9wsVo7gFuNpfLPVXnqcEY6D5DuWl4aEJW4+w+K0urYw==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-windows-arm64@1.3.2:
+    resolution: {integrity: sha512-3xJEjSLdk7I5Z6yyrT4LCQeK4VCj6mo/l4JdUa0zocV8wCzUtY1lSHeipDAaNr8TwD6NeTxr1iomIjuatKAFOA==}
+    cpu: [arm64]
+    os: [win32]
+
+  opencode-windows-x64-baseline@1.3.2:
+    resolution: {integrity: sha512-RVx9e1KBNTSWjrtfRpGIIcJDsM13OUY/lYqJXI1oj34lMOEj5G57fypjk9yBqUHBR+7tolGmewwJJU6SDgyPXQ==}
+    cpu: [x64]
+    os: [win32]
+
+  opencode-windows-x64@1.3.2:
+    resolution: {integrity: sha512-pJMpptERqz8pjnW1pTQf5Ru2WbJz7P2BPM5De5gdUd10y0yUoGvY7uzyJYuGpsrCqeWrEYokERnbv8A/4V3Yaw==}
+    cpu: [x64]
+    os: [win32]
 
   orval@8.5.3:
     resolution: {integrity: sha512-+8Es2ZR3tPthzAL27X1a9AlboqTQ/w9U/PhMkp4vsLA9OvdkpXr+9f8lCfJUV/wtdX+lXBDQ4imx42Em943JSg==}
@@ -5442,6 +5519,57 @@ snapshots:
     optionalDependencies:
       ws: 8.20.0
       zod: 4.3.6
+
+  opencode-ai@1.3.2:
+    optionalDependencies:
+      opencode-darwin-arm64: 1.3.2
+      opencode-darwin-x64: 1.3.2
+      opencode-darwin-x64-baseline: 1.3.2
+      opencode-linux-arm64: 1.3.2
+      opencode-linux-arm64-musl: 1.3.2
+      opencode-linux-x64: 1.3.2
+      opencode-linux-x64-baseline: 1.3.2
+      opencode-linux-x64-baseline-musl: 1.3.2
+      opencode-linux-x64-musl: 1.3.2
+      opencode-windows-arm64: 1.3.2
+      opencode-windows-x64: 1.3.2
+      opencode-windows-x64-baseline: 1.3.2
+
+  opencode-darwin-arm64@1.3.2:
+    optional: true
+
+  opencode-darwin-x64-baseline@1.3.2:
+    optional: true
+
+  opencode-darwin-x64@1.3.2:
+    optional: true
+
+  opencode-linux-arm64-musl@1.3.2:
+    optional: true
+
+  opencode-linux-arm64@1.3.2:
+    optional: true
+
+  opencode-linux-x64-baseline-musl@1.3.2:
+    optional: true
+
+  opencode-linux-x64-baseline@1.3.2:
+    optional: true
+
+  opencode-linux-x64-musl@1.3.2:
+    optional: true
+
+  opencode-linux-x64@1.3.2:
+    optional: true
+
+  opencode-windows-arm64@1.3.2:
+    optional: true
+
+  opencode-windows-x64-baseline@1.3.2:
+    optional: true
+
+  opencode-windows-x64@1.3.2:
+    optional: true
 
   orval@8.5.3(prettier@3.8.1)(typescript@5.9.3):
     dependencies:
