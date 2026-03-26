@@ -1,11 +1,14 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const MODELS = [
@@ -40,68 +43,68 @@ const MODELS = [
 
 type ModelId = (typeof MODELS)[number]["id"];
 
-interface ModelState {
-  status: "idle" | "streaming" | "done" | "error";
+type ChatStatus = "idle" | "streaming" | "error";
+type ChatRole = "user" | "assistant";
+
+type ChatMessage = {
+  id: string;
+  role: ChatRole;
   content: string;
-  error?: string;
-}
+};
 
-interface ChatState {
-  modelStates: Record<ModelId, ModelState>;
-  summaryStatus: "idle" | "streaming" | "done" | "error";
-  summaryContent: string;
-  summaryError?: string;
-  isRunning: boolean;
-}
-
-const defaultModelState = (): ModelState => ({ status: "idle", content: "" });
-
-const defaultChatState = (): ChatState => ({
-  modelStates: {
-    "gpt-5.2": defaultModelState(),
-    "claude-opus-4-6": defaultModelState(),
-    "gemini-3.1-pro-preview": defaultModelState(),
-  },
-  summaryStatus: "idle",
-  summaryContent: "",
-  isRunning: false,
-});
+const newId = () => crypto.randomUUID();
 
 export default function MultiChat() {
-  const [selectedModels, setSelectedModels] = useState<Set<ModelId>>(
-    new Set(["gpt-5.2", "claude-opus-4-6"])
-  );
-  const [prompt, setPrompt] = useState("");
-  const [chatState, setChatState] = useState<ChatState>(defaultChatState());
+  const [modelId, setModelId] = useState<ModelId>("gpt-5.2");
+  const [prompt, setPrompt] = useState<string>("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [status, setStatus] = useState<ChatStatus>("idle");
+  const [error, setError] = useState<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
 
-  const toggleModel = (id: ModelId) => {
-    setSelectedModels((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        if (next.size > 2) next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  const modelById = useMemo(() => {
+    const map = new Map<ModelId, (typeof MODELS)[number]>();
+    for (const m of MODELS) map.set(m.id, m);
+    return map;
+  }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!prompt.trim() || selectedModels.size < 2 || chatState.isRunning) return;
+    const trimmed = prompt.trim();
+    if (!trimmed || status === "streaming") return;
 
     abortRef.current = new AbortController();
-    setChatState({
-      ...defaultChatState(),
-      isRunning: true,
-    });
+    setStatus("streaming");
+    setError(undefined);
+
+    const userMessage: ChatMessage = {
+      id: newId(),
+      role: "user",
+      content: trimmed,
+    };
+    const assistantMessage: ChatMessage = {
+      id: newId(),
+      role: "assistant",
+      content: "",
+    };
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      userMessage,
+      assistantMessage,
+    ];
+    setMessages(nextMessages);
+    setPrompt("");
 
     try {
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const response = await fetch(`${base}/api/multi-chat`, {
+      const response = await fetch(`${base}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), models: Array.from(selectedModels) }),
+        body: JSON.stringify({
+          model: modelId,
+          messages: nextMessages
+            .filter(({ content }) => content.length > 0)
+            .map(({ role, content }) => ({ role, content })),
+        }),
         signal: abortRef.current.signal,
       });
 
@@ -126,78 +129,47 @@ export default function MultiChat() {
           try {
             const event = JSON.parse(line.slice(6));
             handleSSEEvent(event);
-          } catch {
-          }
+          } catch {}
         }
       }
     } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        console.error("Stream error:", err);
-      }
+      if (err instanceof Error && err.name === "AbortError") return;
+      console.error("Stream error:", err);
+      setStatus("error");
+      setError("Stream failed");
     } finally {
-      setChatState((prev) => ({ ...prev, isRunning: false }));
+      setStatus("idle");
     }
-  }, [prompt, selectedModels, chatState.isRunning]);
+  }, [prompt, status, modelId, messages]);
 
-  const handleSSEEvent = (event: { type: string; model?: ModelId; content?: string; error?: string }) => {
-    const { type, model } = event;
+  const handleSSEEvent = (event: {
+    type: string;
+    content?: string;
+    error?: string;
+  }) => {
+    if (event.type === "chunk" && event.content) {
+      setMessages((prev) => {
+        const next = prev.slice();
+        const lastIdx = next.map((m) => m.role).lastIndexOf("assistant");
+        if (lastIdx === -1) return prev;
+        next[lastIdx] = {
+          ...next[lastIdx],
+          content: next[lastIdx].content + event.content,
+        };
+        return next;
+      });
+      return;
+    }
 
-    if (type === "model_start" && model) {
-      setChatState((prev) => ({
-        ...prev,
-        modelStates: {
-          ...prev.modelStates,
-          [model]: { status: "streaming", content: "" },
-        },
-      }));
-    } else if (type === "model_chunk" && model && event.content) {
-      setChatState((prev) => ({
-        ...prev,
-        modelStates: {
-          ...prev.modelStates,
-          [model]: {
-            ...prev.modelStates[model],
-            content: prev.modelStates[model].content + event.content,
-          },
-        },
-      }));
-    } else if (type === "model_done" && model) {
-      setChatState((prev) => ({
-        ...prev,
-        modelStates: {
-          ...prev.modelStates,
-          [model]: { ...prev.modelStates[model], status: "done" },
-        },
-      }));
-    } else if (type === "model_error" && model) {
-      setChatState((prev) => ({
-        ...prev,
-        modelStates: {
-          ...prev.modelStates,
-          [model]: { status: "error", content: "", error: event.error },
-        },
-      }));
-    } else if (type === "summary_start") {
-      setChatState((prev) => ({ ...prev, summaryStatus: "streaming", summaryContent: "" }));
-    } else if (type === "summary_chunk" && event.content) {
-      setChatState((prev) => ({
-        ...prev,
-        summaryContent: prev.summaryContent + event.content,
-      }));
-    } else if (type === "summary_done") {
-      setChatState((prev) => ({ ...prev, summaryStatus: "done" }));
-    } else if (type === "summary_error") {
-      setChatState((prev) => ({
-        ...prev,
-        summaryStatus: "error",
-        summaryError: event.error,
-      }));
+    if (event.type === "error") {
+      setStatus("error");
+      setError(event.error ?? "Model error");
     }
   };
 
   const handleStop = () => {
     abortRef.current?.abort();
-    setChatState((prev) => ({ ...prev, isRunning: false }));
+    setStatus("idle");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -207,248 +179,185 @@ export default function MultiChat() {
     }
   };
 
-  const selectedModelsList = MODELS.filter((m) => selectedModels.has(m.id));
-  const hasResults = Object.values(chatState.modelStates).some((s) => s.content);
+  const selectedModel = modelById.get(modelId);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
-      <header className="border-b border-gray-800 px-6 py-4 flex items-center gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
-            M
+    <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col pb-[env(safe-area-inset-bottom)]">
+      <header className="border-b border-gray-800 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 flex-shrink-0 pt-[env(safe-area-inset-top)]">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+            C
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">Multi-Model Chat</h1>
+          <div className="leading-tight">
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight">
+              summachat V2
+            </h1>
+            <p className="text-xs text-gray-500">Chat</p>
+          </div>
         </div>
-        <span className="text-gray-500 text-sm ml-1">Compare AI responses side by side</span>
-      </header>
 
-      <div className="flex flex-col flex-1 max-w-7xl w-full mx-auto px-6 py-6 gap-6">
-        <div className="flex flex-col gap-4">
-          <div>
-            <p className="text-sm font-medium text-gray-400 mb-3">Select 2 or more models</p>
-            <div className="flex flex-wrap gap-3">
-              {MODELS.map((model) => {
-                const isSelected = selectedModels.has(model.id);
-                const canDeselect = selectedModels.size > 2;
-                return (
-                  <button
-                    key={model.id}
-                    onClick={() => toggleModel(model.id)}
-                    disabled={isSelected && !canDeselect}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all duration-150 text-left",
-                      isSelected
-                        ? `${model.borderColor} bg-gray-800`
-                        : "border-gray-700 bg-gray-900 hover:border-gray-600",
-                      isSelected && !canDeselect && "opacity-60 cursor-not-allowed"
-                    )}
-                  >
+        <div className="flex justify-center w-full sm:flex-1">
+          <Select
+            value={modelId}
+            onValueChange={(v) => setModelId(v as ModelId)}
+            disabled={status === "streaming"}
+          >
+            <SelectTrigger className="h-11 sm:h-9 w-full sm:w-[260px] bg-gray-950/40 border-gray-800 text-gray-200">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-950 border-gray-800">
+              {MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  <span className="flex items-center gap-2">
                     <span
                       className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center text-white text-lg font-bold",
-                        isSelected ? model.color : "bg-gray-700"
+                        "w-5 h-5 rounded-md flex items-center justify-center text-white text-[10px] font-bold",
+                        m.color,
                       )}
                     >
-                      {model.icon}
+                      {m.icon}
                     </span>
-                    <div>
-                      <p className={cn("text-sm font-medium", isSelected ? "text-white" : "text-gray-300")}>
-                        {model.label}
-                      </p>
-                      <p className="text-xs text-gray-500">{model.provider}</p>
-                    </div>
-                    <div
-                      className={cn(
-                        "w-4 h-4 rounded border-2 flex items-center justify-center ml-1 flex-shrink-0",
-                        isSelected ? `${model.borderColor} ${model.color}` : "border-gray-600"
-                      )}
-                    >
-                      {isSelected && (
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+                    <span className="text-sm">{m.label}</span>
+                    <span className="text-xs text-gray-500">{m.provider}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 w-full sm:w-auto sm:min-w-[220px]">
+          {status === "streaming" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-gray-800 bg-transparent text-gray-300 hover:text-white hover:bg-gray-900 h-11 sm:h-9 w-full sm:w-auto"
+              onClick={handleStop}
+            >
+              Stop
+            </Button>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 min-h-0 w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col gap-4">
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden flex flex-col flex-1 min-h-0">
+          <div className="border-b border-gray-800 px-4 py-2 flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center gap-2">
+              {selectedModel && (
+                <span
+                  className={cn(
+                    "w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs font-bold",
+                    selectedModel.color,
+                  )}
+                >
+                  {selectedModel.icon}
+                </span>
+              )}
+              <span>{selectedModel?.label ?? modelId}</span>
+              {status === "streaming" && (
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  streaming
+                </span>
+              )}
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 px-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800"
+              onClick={() => setMessages([])}
+              disabled={status === "streaming" || messages.length === 0}
+            >
+              Clear
+            </Button>
           </div>
 
-          <div className="flex gap-3 items-end">
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-4 space-y-3">
+              {messages.length === 0 ? (
+                <div className="h-full min-h-[360px] flex items-center justify-center">
+                  <div className="text-center space-y-2">
+                    <p className="text-sm text-gray-400">
+                      Start a conversation
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      Model selector is centered above
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={cn(
+                      "flex",
+                      m.role === "user" ? "justify-end" : "justify-start",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap",
+                        m.role === "user"
+                          ? "bg-violet-600 text-white"
+                          : "bg-gray-950/30 border border-gray-800 text-gray-200",
+                      )}
+                    >
+                      {m.content}
+                      {m.role === "assistant" &&
+                        status === "streaming" &&
+                        m.content.length > 0 && (
+                          <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
+                        )}
+                    </div>
+                  </div>
+                ))
+              )}
+              {status === "error" && (
+                <div className="text-xs text-red-400">
+                  {error ?? "An error occurred"}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
             <div className="flex-1">
               <Textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask something... (Ctrl+Enter to send)"
-                className="bg-gray-900 border-gray-700 text-gray-100 placeholder:text-gray-600 resize-none min-h-[80px] focus:border-violet-500 focus:ring-violet-500/20"
-                disabled={chatState.isRunning}
+                placeholder="Message…  (Ctrl+Enter to send)"
+                className="bg-gray-950/40 border-gray-800 text-gray-100 placeholder:text-gray-600 resize-none min-h-[96px] focus:border-violet-500 focus:ring-violet-500/20"
+                disabled={status === "streaming"}
               />
+              <p className="mt-2 text-[11px] text-gray-600">
+                Sending to{" "}
+                <span className="text-gray-400">
+                  {selectedModel?.label ?? modelId}
+                </span>
+              </p>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:items-end">
               <Button
                 onClick={handleSubmit}
-                disabled={!prompt.trim() || selectedModels.size < 2 || chatState.isRunning}
-                className="bg-violet-600 hover:bg-violet-700 text-white px-6 h-10"
+                disabled={!prompt.trim() || status === "streaming"}
+                className="bg-violet-600 hover:bg-violet-700 text-white px-6 h-11 sm:h-10 w-full sm:w-auto"
               >
-                {chatState.isRunning ? (
+                {status === "streaming" ? (
                   <span className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                    Running
+                    Sending
                   </span>
                 ) : (
                   "Send"
                 )}
               </Button>
-              {chatState.isRunning && (
-                <Button
-                  onClick={handleStop}
-                  variant="outline"
-                  className="border-gray-700 text-gray-400 hover:text-gray-200 h-10 px-6"
-                >
-                  Stop
-                </Button>
-              )}
             </div>
           </div>
         </div>
-
-        {hasResults && (
-          <>
-            <Separator className="bg-gray-800" />
-
-            <div
-              className="grid gap-4"
-              style={{ gridTemplateColumns: `repeat(${selectedModelsList.length}, minmax(0, 1fr))` }}
-            >
-              {selectedModelsList.map((model) => {
-                const state = chatState.modelStates[model.id];
-                return (
-                  <Card key={model.id} className={cn("bg-gray-900 border-gray-800 flex flex-col", state.status === "streaming" && `border-t-2 ${model.borderColor}`)}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold",
-                              model.color
-                            )}
-                          >
-                            {model.icon}
-                          </span>
-                          <CardTitle className="text-sm font-medium text-gray-200">
-                            {model.label}
-                          </CardTitle>
-                        </div>
-                        {state.status === "streaming" && (
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Streaming
-                          </span>
-                        )}
-                        {state.status === "done" && (
-                          <Badge variant="outline" className="text-xs text-gray-500 border-gray-700">
-                            Done
-                          </Badge>
-                        )}
-                        {state.status === "error" && (
-                          <Badge variant="outline" className="text-xs text-red-400 border-red-900">
-                            Error
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4 flex-1">
-                      {state.status === "error" ? (
-                        <p className="text-sm text-red-400">{state.error ?? "An error occurred"}</p>
-                      ) : (
-                        <ScrollArea className="max-h-72">
-                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                            {state.content}
-                            {state.status === "streaming" && (
-                              <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
-                            )}
-                          </p>
-                        </ScrollArea>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {(chatState.summaryStatus !== "idle") && (
-              <Card className={cn(
-                "bg-gray-900 border-gray-800",
-                chatState.summaryStatus === "streaming" && "border-t-2 border-violet-400"
-              )}>
-                <CardHeader className="pb-2 pt-4 px-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded bg-violet-600 flex items-center justify-center text-white text-xs font-bold">
-                        ∑
-                      </span>
-                      <CardTitle className="text-sm font-medium text-gray-200">
-                        Synthesis
-                      </CardTitle>
-                      <span className="text-xs text-gray-500">GPT 5.4 High summarising all responses</span>
-                    </div>
-                    {chatState.summaryStatus === "streaming" && (
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                        Synthesising
-                      </span>
-                    )}
-                    {chatState.summaryStatus === "done" && (
-                      <Badge variant="outline" className="text-xs text-gray-500 border-gray-700">
-                        Done
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  {chatState.summaryStatus === "error" ? (
-                    <p className="text-sm text-red-400">{chatState.summaryError ?? "Synthesis failed"}</p>
-                  ) : (
-                    <ScrollArea className="max-h-80">
-                      <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                        {chatState.summaryContent}
-                        {chatState.summaryStatus === "streaming" && (
-                          <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
-                        )}
-                      </p>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
-
-        {!hasResults && !chatState.isRunning && (
-          <div className="flex-1 flex items-center justify-center py-16">
-            <div className="text-center space-y-3">
-              <div className="flex justify-center gap-2 text-2xl">
-                {MODELS.map((m) => (
-                  <span
-                    key={m.id}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center text-white",
-                      selectedModels.has(m.id) ? m.color : "bg-gray-800 text-gray-600"
-                    )}
-                  >
-                    {m.icon}
-                  </span>
-                ))}
-              </div>
-              <p className="text-gray-500 text-sm">
-                Select models, type a prompt, and hit Send
-              </p>
-              <p className="text-gray-700 text-xs">All models receive the same prompt simultaneously</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

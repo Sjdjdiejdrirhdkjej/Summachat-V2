@@ -2,7 +2,7 @@ import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { ai } from "@workspace/integrations-gemini-ai";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 const router = Router();
 
@@ -115,7 +115,7 @@ router.post("/multi-chat", async (req, res) => {
     return;
   }
 
-  const { prompt, models } = parsed.data;
+  const { prompt, models }: { prompt: string; models: ModelId[] } = parsed.data;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");

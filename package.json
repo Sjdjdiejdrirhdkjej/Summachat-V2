@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; ua=\"${npm_config_user_agent:-}\"; if [ -z \"$ua\" ]; then exit 0; fi; case \"$ua\" in pnpm/*|bun/*) ;; *) echo \"Use pnpm or bun instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
@@ -14,7 +14,9 @@
     "typescript": "~5.9.2"
   },
   "dependencies": {
-    "opencode-ai": "^1.3.2"
+    "@kilocode/cli": "^7.1.4",
+    "opencode-ai": "^1.3.2",
+    "yaml-language-server": "^1.21.0"
   },
   "workspaces": {
     "packages": [
