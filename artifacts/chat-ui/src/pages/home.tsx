@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { getFingerprint } from "@/lib/fingerprint";
 import { listChats, deleteChat, type StoredChat } from "@/lib/chat-store";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
 
 const MODEL_COLORS: Record<string, string> = {
@@ -31,6 +32,7 @@ export default function Home() {
   const [, navigate] = useLocation();
   const [chats, setChats] = useState<StoredChat[]>([]);
   const [fp, setFp] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     getFingerprint().then((fingerprint) => {
@@ -52,8 +54,20 @@ export default function Home() {
 
   return (
     <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
+      <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
       <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors flex-shrink-0"
+            aria-label="Open menu"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
             S
           </div>

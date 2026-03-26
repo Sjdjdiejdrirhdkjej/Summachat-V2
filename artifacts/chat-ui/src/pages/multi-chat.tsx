@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { getFingerprint } from "@/lib/fingerprint";
 import { saveChat, getChat, deriveChatTitle } from "@/lib/chat-store";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import type { ModelId, Turn, ModelState } from "@/types/chat";
 
 const MODELS = [
@@ -68,6 +69,7 @@ export default function MultiChat({ chatId }: Props) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [appStatus, setAppStatus] = useState<AppStatus>("idle");
   const [fp, setFp] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -282,23 +284,41 @@ export default function MultiChat({ chatId }: Props) {
 
   return (
     <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
+      <ChatSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        currentChatId={chatId}
+      />
+
       <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-          >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-              S
-            </div>
-            <div className="leading-tight text-left">
-              <h1 className="text-sm font-semibold tracking-tight">
-                summachat V2
-              </h1>
-              <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
-            </div>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors flex-shrink-0"
+              aria-label="Open menu"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+            >
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                S
+              </div>
+              <div className="leading-tight text-left">
+                <h1 className="text-sm font-semibold tracking-tight">
+                  summachat V2
+                </h1>
+                <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
+              </div>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2">
             {appStatus === "streaming" && (
