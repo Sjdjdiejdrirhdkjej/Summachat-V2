@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -10,6 +9,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: chat
+    description: Multi-model chat operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /chat/query:
+    post:
+      operationId: chatQuery
+      tags: [chat]
+      summary: Send a query to multiple models
+      description: Sends the same prompt to all selected models and returns a session ID for streaming
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatQueryRequest"
+      responses:
+        "200":
+          description: Query accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatQueryResponse"
+
+  /chat/history:
+    get:
+      operationId: getChatHistory
+      tags: [chat]
+      summary: Get all chat sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatHistoryResponse"
+
+  /chat/sessions/{sessionId}:
+    get:
+      operationId: getChatSession
+      tags: [chat]
+      summary: Get a chat session with all model responses
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSession"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +88,116 @@ components:
       required:
         - status
 
+    ModelId:
+      type: string
+      enum:
+        - gpt-5.2
+        - claude-opus-4-6
+        - gemini-3.1-pro-preview
+
+    ChatQueryRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelId"
+          minItems: 2
+      required:
+        - prompt
+        - models
+
+    ChatQueryResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        prompt:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelId"
+      required:
+        - sessionId
+        - prompt
+        - models
+
+    ModelResponse:
+      type: object
+      properties:
+        modelId:
+          $ref: "#/components/schemas/ModelId"
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, streaming, complete, error]
+        error:
+          type: string
+      required:
+        - modelId
+        - content
+        - status
+
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelId"
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelResponse"
+        summary:
+          type: string
+        summaryStatus:
+          type: string
+          enum: [pending, streaming, complete, error]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - prompt
+        - models
+        - responses
+        - summaryStatus
+
+    ChatHistoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelId"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - prompt
+        - models
+
+    ChatHistoryResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatHistoryItem"
+      required:
+        - sessions
