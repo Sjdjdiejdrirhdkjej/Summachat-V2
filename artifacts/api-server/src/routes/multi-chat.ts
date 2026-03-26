@@ -2,6 +2,7 @@ import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { ai } from "@workspace/integrations-gemini-ai";
+import Exa from "exa-js";
 import { z } from "zod";
 
 const router = Router();
@@ -17,14 +18,48 @@ type ModelId = keyof typeof MODELS;
 const MultiChatSchema = z.object({
   prompt: z.string().min(1),
   models: z.array(z.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"])).min(2),
+  webSearch: z.boolean().optional().default(false),
 });
 
-async function callGPT(prompt: string, onChunk: (text: string) => void): Promise<string> {
+type SearchResult = { title: string; url: string; text: string };
+
+async function searchWeb(query: string): Promise<SearchResult[]> {
+  const exa = new Exa(process.env.EXA_API_KEY);
+  const result = await exa.searchAndContents(query, {
+    type: "auto",
+    numResults: 5,
+    text: { maxCharacters: 1500 },
+  });
+  return result.results.map((r) => ({
+    title: r.title ?? "",
+    url: r.url,
+    text: (r as any).text ?? "",
+  }));
+}
+
+function buildWebContext(results: SearchResult[]): string {
+  const block = results
+    .map((r, i) =>
+      `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.text.trim()}`
+    )
+    .join("\n\n---\n\n");
+  return `The following are live web search results relevant to the user's question. Use them to inform your answer where appropriate:\n\n${block}\n\n---\n\nUser question:`;
+}
+
+async function callGPT(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void
+): Promise<string> {
+  const messages: { role: "system" | "user"; content: string }[] = [];
+  if (webContext) messages.push({ role: "system", content: webContext });
+  messages.push({ role: "user", content: prompt });
+
   let full = "";
   const stream = await openai.chat.completions.create({
     model: "gpt-5.2",
     max_completion_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
+    messages,
     stream: true,
   });
   for await (const chunk of stream) {
@@ -37,15 +72,23 @@ async function callGPT(prompt: string, onChunk: (text: string) => void): Promise
   return full;
 }
 
-async function callClaude(prompt: string, onChunk: (text: string) => void): Promise<string> {
+async function callClaude(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void
+): Promise<string> {
   let full = "";
   const stream = anthropic.messages.stream({
     model: "claude-opus-4-6",
     max_tokens: 8192,
+    system: webContext ?? undefined,
     messages: [{ role: "user", content: prompt }],
   });
   for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
       full += event.delta.text;
       onChunk(event.delta.text);
     }
@@ -53,11 +96,22 @@ async function callClaude(prompt: string, onChunk: (text: string) => void): Prom
   return full;
 }
 
-async function callGemini(prompt: string, onChunk: (text: string) => void): Promise<string> {
+async function callGemini(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void
+): Promise<string> {
   let full = "";
+  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+  if (webContext) {
+    contents.push({ role: "user", parts: [{ text: webContext }] });
+    contents.push({ role: "model", parts: [{ text: "Understood. I will use these results to inform my answer." }] });
+  }
+  contents.push({ role: "user", parts: [{ text: prompt }] });
+
   const stream = await ai.models.generateContentStream({
     model: "gemini-3.1-pro-preview",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    contents,
     config: { maxOutputTokens: 8192 },
   });
   for await (const chunk of stream) {
@@ -80,7 +134,6 @@ async function callSummarizer(
     .join("\n\n");
 
   const systemPrompt = `You are a summariser. You will be given a user's question and several responses to it. Write a single, clear, concise summary of those responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
-
   const userMessage = `User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nSummarise these responses.`;
 
   let full = "";
@@ -110,7 +163,11 @@ router.post("/multi-chat", async (req, res) => {
     return;
   }
 
-  const { prompt, models }: { prompt: string; models: ModelId[] } = parsed.data;
+  const { prompt, models, webSearch } = parsed.data as {
+    prompt: string;
+    models: ModelId[];
+    webSearch: boolean;
+  };
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -122,6 +179,24 @@ router.post("/multi-chat", async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
     (res as any).flush?.();
   };
+
+  let webContext: string | null = null;
+  let searchResults: SearchResult[] = [];
+
+  if (webSearch) {
+    send({ type: "search_start" });
+    try {
+      searchResults = await searchWeb(prompt);
+      webContext = buildWebContext(searchResults);
+      send({
+        type: "search_done",
+        results: searchResults.map((r) => ({ title: r.title, url: r.url })),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Search failed";
+      send({ type: "search_error", error: message });
+    }
+  }
 
   const modelResponses: { model: ModelId; label: string; response: string }[] = [];
 
@@ -136,11 +211,11 @@ router.post("/multi-chat", async (req, res) => {
         };
 
         if (modelId === "gpt-5.2") {
-          response = await callGPT(prompt, onChunk);
+          response = await callGPT(prompt, webContext, onChunk);
         } else if (modelId === "claude-opus-4-6") {
-          response = await callClaude(prompt, onChunk);
+          response = await callClaude(prompt, webContext, onChunk);
         } else if (modelId === "gemini-3.1-pro-preview") {
-          response = await callGemini(prompt, onChunk);
+          response = await callGemini(prompt, webContext, onChunk);
         }
 
         modelResponses.push({ model: modelId, label: MODELS[modelId], response });

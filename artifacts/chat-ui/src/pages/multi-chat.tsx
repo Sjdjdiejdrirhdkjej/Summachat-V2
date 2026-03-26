@@ -70,6 +70,7 @@ export default function MultiChat({ chatId }: Props) {
   const [appStatus, setAppStatus] = useState<AppStatus>("idle");
   const [fp, setFp] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [webSearch, setWebSearch] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -143,6 +144,9 @@ export default function MultiChat({ chatId }: Props) {
       models: initialModels,
       summary: "",
       summaryStatus: "idle",
+      webSearch,
+      searchStatus: webSearch ? "searching" : "idle",
+      searchResults: [],
     };
 
     const nextTurns = [...turns, newTurn];
@@ -157,7 +161,7 @@ export default function MultiChat({ chatId }: Props) {
       const response = await fetch(`${base}/api/multi-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed, models: modelIds }),
+        body: JSON.stringify({ prompt: trimmed, models: modelIds, webSearch }),
         signal: abortRef.current.signal,
       });
 

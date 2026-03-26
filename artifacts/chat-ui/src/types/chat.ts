@@ -6,6 +6,11 @@ export type ModelState = {
   error?: string;
 };
 
+export type SearchResult = {
+  title: string;
+  url: string;
+};
+
 export type Turn = {
   id: string;
   prompt: string;
@@ -13,4 +18,7 @@ export type Turn = {
   models: Partial<Record<ModelId, ModelState>>;
   summary: string;
   summaryStatus: "idle" | "streaming" | "done" | "error";
+  webSearch: boolean;
+  searchStatus: "idle" | "searching" | "done" | "error";
+  searchResults: SearchResult[];
 };

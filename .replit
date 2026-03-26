@@ -27,3 +27,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+EXA_API_KEY = "c1d770ca-44f9-4344-9019-a8f4fbc0092f"
