@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/Markdown";
 
 const MODELS = [
   {
@@ -387,12 +388,12 @@ export default function MultiChat() {
                             ) : ms.status === "error" ? (
                               <p className="text-xs text-red-400">{ms.error ?? "Error"}</p>
                             ) : (
-                              <p className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">
-                                {ms.content}
+                              <div className="text-xs">
+                                <Markdown>{ms.content}</Markdown>
                                 {ms.status === "streaming" && (
                                   <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
                                 )}
-                              </p>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -415,7 +416,7 @@ export default function MultiChat() {
                           <span className="text-xs text-red-400">Summary failed.</span>
                         ) : (
                           <>
-                            {turn.summary}
+                            <Markdown>{turn.summary}</Markdown>
                             {turn.summaryStatus === "streaming" && (
                               <span className="inline-block w-1 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
                             )}
