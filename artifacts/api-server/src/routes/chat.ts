@@ -46,6 +46,8 @@ type ChatProvider = z.infer<typeof ChatSchema>["model"];
 
 const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
 const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
+const GEMINI_OVERALL_TIMEOUT_MS = 600_000;
+const GEMINI_FIRST_CHUNK_TIMEOUT_MS = 180_000;
 
 function toOpenAiMessages(messages: ChatMessage[]) {
   return messages.map((m) => ({ role: m.role, content: m.content })) as {
@@ -172,8 +174,8 @@ async function callGemini(
     provider: "gemini:gemini-3.1-pro-preview",
     requestId: context.requestId,
     logger: context.logger,
-    overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
-    firstChunkTimeoutMs: PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
+    overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS,
+    firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS,
     externalAbortSignal: context.signal,
     startStream: async () => {
       const stream = (await ai.models.generateContentStream({

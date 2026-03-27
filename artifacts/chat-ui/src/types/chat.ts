@@ -17,6 +17,7 @@ export type Turn = {
   selectedModels: ModelId[];
   models: Partial<Record<ModelId, ModelState>>;
   summary: string;
+  summaryThinking?: string;
   summaryStatus: "idle" | "streaming" | "done" | "error";
   webSearch: boolean;
   searchStatus: "idle" | "searching" | "done" | "error";

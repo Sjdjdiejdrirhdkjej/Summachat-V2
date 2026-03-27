@@ -36,6 +36,10 @@ type StreamRequestContext = {
 const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
 const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
 const PROVIDER_HARD_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS + 10_000;
+const GEMINI_OVERALL_TIMEOUT_MS = 600_000;
+const GEMINI_FIRST_CHUNK_TIMEOUT_MS = 180_000;
+const GEMINI_HARD_TIMEOUT_MS = GEMINI_OVERALL_TIMEOUT_MS + 10_000;
+const SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS;
 
 const MultiChatSchema = z.object({
   prompt: z.string().min(1),
@@ -135,30 +139,121 @@ async function callGemini(
   }
   contents.push({ role: "user", parts: [{ text: prompt }] });
 
-  return runGuardedProviderStream({
-    provider: "gemini:gemini-3.1-pro-preview",
-    requestId: context.requestId,
-    logger: context.logger,
-    overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
-    firstChunkTimeoutMs: PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
-    externalAbortSignal: context.signal,
-    startStream: async () => {
-      const stream = (await ai.models.generateContentStream({
-        model: "gemini-3.1-pro-preview",
-        contents,
-        config: { maxOutputTokens: 8192 },
-      })) as AsyncIterable<{ text: string }>;
-      return { stream };
-    },
-    getChunkText: (chunk) => chunk.text,
-    onChunk,
-  });
+  const provider = "gemini:gemini-3.1-pro-preview";
+  const startAt = Date.now();
+  let firstChunkAt: number | null = null;
+  let output = "";
+
+  const abortController = new AbortController();
+
+  const onExternalAbort = () => abortController.abort("external_abort");
+  if (context.signal.aborted) {
+    abortController.abort("external_abort");
+  } else {
+    context.signal.addEventListener("abort", onExternalAbort, { once: true });
+  }
+
+  const overallTimer = setTimeout(
+    () => abortController.abort("overall_timeout"),
+    GEMINI_OVERALL_TIMEOUT_MS,
+  );
+  const firstChunkTimer = setTimeout(
+    () => abortController.abort("first_chunk_timeout"),
+    GEMINI_FIRST_CHUNK_TIMEOUT_MS,
+  );
+
+  context.logger.info(
+    { requestId: context.requestId, provider, overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS, firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS },
+    "provider_stream_started",
+  );
+
+  try {
+    const sdkStream = await ai.models.generateContentStream({
+      model: "gemini-3.1-pro-preview",
+      contents,
+      config: {
+        maxOutputTokens: 8192,
+        abortSignal: abortController.signal,
+      },
+    });
+
+    for await (const chunk of sdkStream) {
+      if (abortController.signal.aborted) break;
+      const text = chunk.text;
+      if (!text) continue;
+
+      if (firstChunkAt === null) {
+        firstChunkAt = Date.now();
+        clearTimeout(firstChunkTimer);
+        context.logger.info(
+          { requestId: context.requestId, provider, firstChunkMs: firstChunkAt - startAt },
+          "provider_stream_first_chunk",
+        );
+      }
+
+      output += text;
+      onChunk(text);
+    }
+
+    const totalMs = Date.now() - startAt;
+
+    if (abortController.signal.aborted) {
+      const reason = abortController.signal.reason as string;
+      const status =
+        reason === "overall_timeout" || reason === "first_chunk_timeout"
+          ? "timed_out"
+          : "aborted";
+      context.logger.warn(
+        { requestId: context.requestId, provider, status, reason, totalMs },
+        status === "timed_out" ? "provider_stream_timed_out" : "provider_stream_aborted",
+      );
+      return { status, output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs };
+    }
+
+    if (output.length === 0) {
+      context.logger.warn({ requestId: context.requestId, provider, totalMs }, "provider_stream_empty_output");
+      return { status: "empty", output, firstChunkMs: null, totalMs };
+    }
+
+    context.logger.info(
+      { requestId: context.requestId, provider, totalMs, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, outputLength: output.length },
+      "provider_stream_completed",
+    );
+    return { status: "success", output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs };
+  } catch (error) {
+    const totalMs = Date.now() - startAt;
+    const normalizedError = error instanceof Error ? error : new Error("Unknown Gemini stream error");
+
+    if (abortController.signal.aborted) {
+      const reason = abortController.signal.reason as string;
+      const status =
+        reason === "overall_timeout" || reason === "first_chunk_timeout"
+          ? "timed_out"
+          : "aborted";
+      context.logger.warn(
+        { requestId: context.requestId, provider, status, reason, totalMs, err: normalizedError },
+        status === "timed_out" ? "provider_stream_timed_out" : "provider_stream_aborted",
+      );
+      return { status, output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs, error: normalizedError };
+    }
+
+    context.logger.error(
+      { requestId: context.requestId, provider, totalMs, err: normalizedError },
+      "provider_stream_errored",
+    );
+    return { status: "errored", output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs, error: normalizedError };
+  } finally {
+    clearTimeout(overallTimer);
+    clearTimeout(firstChunkTimer);
+    context.signal.removeEventListener("abort", onExternalAbort);
+  }
 }
 
 async function callSummarizer(
   prompt: string,
   responses: { model: ModelId; label: string; response: string }[],
   onChunk: (text: string) => void,
+  onThinkingChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
   const responseBlock = responses
@@ -173,7 +268,7 @@ async function callSummarizer(
     requestId: context.requestId,
     logger: context.logger,
     overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
-    firstChunkTimeoutMs: PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
+    firstChunkTimeoutMs: SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS,
     externalAbortSignal: context.signal,
     startStream: async ({ signal }) => {
       const stream = await openai.chat.completions.create(
@@ -191,7 +286,16 @@ async function callSummarizer(
       );
       return { stream };
     },
-    getChunkText: (chunk) => chunk.choices[0]?.delta?.content,
+    getChunkText: (chunk) => {
+      const delta = chunk.choices[0]?.delta;
+      if (delta && "reasoning_content" in delta) {
+        const reasoning = (delta as (typeof delta) & { reasoning_content?: string | null }).reasoning_content;
+        if (reasoning) {
+          onThinkingChunk(reasoning);
+        }
+      }
+      return delta?.content;
+    },
     onChunk,
   });
 }
@@ -386,6 +490,11 @@ router.post("/multi-chat", async (req, res) => {
 
         let hardTimeoutHandle: NodeJS.Timeout | null = null;
 
+        const modelHardTimeoutMs =
+          modelId === "gemini-3.1-pro-preview"
+            ? GEMINI_HARD_TIMEOUT_MS
+            : PROVIDER_HARD_TIMEOUT_MS;
+
         const raceResult = await Promise.race<
           GuardedProviderStreamResult | null | "hard_timeout"
         >([
@@ -393,7 +502,7 @@ router.post("/multi-chat", async (req, res) => {
           new Promise<"hard_timeout">((resolve) => {
             hardTimeoutHandle = setTimeout(
               () => resolve("hard_timeout"),
-              PROVIDER_HARD_TIMEOUT_MS,
+              modelHardTimeoutMs,
             );
           }),
         ]);
@@ -477,6 +586,9 @@ router.post("/multi-chat", async (req, res) => {
           successfulResponses,
           (text) => {
             send({ type: "summary_chunk", content: text });
+          },
+          (text) => {
+            send({ type: "summary_thinking_chunk", content: text });
           },
           streamContext,
         );
