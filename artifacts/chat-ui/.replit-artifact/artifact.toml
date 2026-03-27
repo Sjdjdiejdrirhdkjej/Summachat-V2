@@ -18,7 +18,7 @@ localPort = 24918
 run = "pnpm --filter @workspace/chat-ui run dev"
 
 [services.production]
-build = [ "npm", "run", "build", "--workspace=@workspace/chat-ui" ]
+build = [ "npm", "--prefix", "artifacts/chat-ui", "run", "build" ]
 publicDir = "artifacts/chat-ui/dist/public"
 serve = "static"
 
