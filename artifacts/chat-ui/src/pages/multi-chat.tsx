@@ -434,11 +434,19 @@ export default function MultiChat({ chatId }: Props) {
     };
 
     try {
+      const history = turns.flatMap((t) => {
+        if (!t.summary || t.summaryStatus !== "done") return [];
+        return [
+          { role: "user" as const, content: t.prompt },
+          { role: "assistant" as const, content: t.summary },
+        ];
+      });
+
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       const response = await fetch(`${base}/api/multi-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed, models: modelIds, webSearch }),
+        body: JSON.stringify({ prompt: trimmed, models: modelIds, webSearch, history }),
         signal: abortRef.current.signal,
       });
 

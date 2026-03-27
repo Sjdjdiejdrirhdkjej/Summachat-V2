@@ -41,6 +41,8 @@ const GEMINI_FIRST_CHUNK_TIMEOUT_MS = 180_000;
 const GEMINI_HARD_TIMEOUT_MS = GEMINI_OVERALL_TIMEOUT_MS + 10_000;
 const SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS;
 
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
 const MultiChatSchema = z.object({
   prompt: z.string().min(1),
   models: z
@@ -50,16 +52,29 @@ const MultiChatSchema = z.object({
       message: "Models must be unique",
     }),
   webSearch: z.boolean().optional().default(false),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 async function callGPT(
+  history: ChatMessage[],
   prompt: string,
   webContext: string | null,
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
-  const messages: { role: "system" | "user"; content: string }[] = [];
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [];
   if (webContext) messages.push({ role: "system", content: webContext });
+  for (const msg of history) {
+    messages.push({ role: msg.role, content: msg.content });
+  }
   messages.push({ role: "user", content: prompt });
 
   return runGuardedProviderStream({
@@ -87,11 +102,16 @@ async function callGPT(
 }
 
 async function callClaude(
+  history: ChatMessage[],
   prompt: string,
   webContext: string | null,
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const claudeMessages = [
+    ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    { role: "user" as const, content: prompt },
+  ];
   return runGuardedProviderStream({
     provider: "anthropic:claude-opus-4-6",
     requestId: context.requestId,
@@ -104,7 +124,7 @@ async function callClaude(
         model: "claude-opus-4-6",
         max_tokens: 8192,
         system: webContext ?? undefined,
-        messages: [{ role: "user", content: prompt }],
+        messages: claudeMessages,
       });
       return { stream, abort: () => stream.abort() };
     },
@@ -122,12 +142,19 @@ async function callClaude(
 }
 
 async function callGemini(
+  history: ChatMessage[],
   prompt: string,
   webContext: string | null,
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+  for (const msg of history) {
+    contents.push({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }],
+    });
+  }
   if (webContext) {
     contents.push({ role: "user", parts: [{ text: webContext }] });
     contents.push({
@@ -260,6 +287,7 @@ function partialTagOverlap(text: string, tag: string): number {
 }
 
 async function callSummarizer(
+  history: ChatMessage[],
   prompt: string,
   responses: { model: ModelId; label: string; response: string }[],
   onChunk: (text: string) => void,
@@ -279,7 +307,10 @@ Before writing your summary, reason through the responses inside <thinking>...</
 - How to best synthesize the information into a coherent answer
 
 After closing the </thinking> tag, write a single, clear, concise summary that combines the best insights from all responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
-  const userMessage = `User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nReason through the responses in <thinking> tags, then summarise.`;
+  const historyBlock = history.length > 0
+    ? `Conversation so far:\n${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")}\n\n`
+    : "";
+  const userMessage = `${historyBlock}User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nReason through the responses in <thinking> tags, then summarise.`;
 
   const OPEN_TAG = "<thinking>";
   const CLOSE_TAG = "</thinking>";
@@ -383,7 +414,7 @@ router.post("/multi-chat", async (req, res) => {
     return;
   }
 
-  const { prompt, models, webSearch } = parsed.data;
+  const { prompt, models, webSearch, history } = parsed.data;
   const requestWithLog = req as typeof req & {
     id?: string;
     log: StreamRequestContext["logger"];
@@ -494,6 +525,7 @@ router.post("/multi-chat", async (req, res) => {
           (async () => {
             if (modelId === "gpt-5.2") {
               return callGPT(
+                history,
                 prompt,
                 webContext,
                 (text) => {
@@ -511,6 +543,7 @@ router.post("/multi-chat", async (req, res) => {
 
             if (modelId === "claude-opus-4-6") {
               return callClaude(
+                history,
                 prompt,
                 webContext,
                 (text) => {
@@ -528,6 +561,7 @@ router.post("/multi-chat", async (req, res) => {
 
             if (modelId === "gemini-3.1-pro-preview") {
               return callGemini(
+                history,
                 prompt,
                 webContext,
                 (text) => {
@@ -640,6 +674,7 @@ router.post("/multi-chat", async (req, res) => {
       send({ type: "summary_start" });
       try {
         const summaryResult = await callSummarizer(
+          history,
           prompt,
           successfulResponses,
           (text) => {
