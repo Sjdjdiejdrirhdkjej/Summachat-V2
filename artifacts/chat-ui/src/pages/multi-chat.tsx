@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
@@ -56,6 +55,107 @@ const MODEL_MAP = Object.fromEntries(MODELS.map((m) => [m.id, m])) as Record<
 
 type AppStatus = "idle" | "streaming";
 
+type MultiChatTurn = Turn & {
+  searchError?: string;
+  summaryError?: string;
+};
+
+const INCOMPLETE_MODEL_ERROR =
+  "Connection ended before this model produced a complete response.";
+const INCOMPLETE_SUMMARY_ERROR =
+  "Connection ended before the summary finished.";
+const INCOMPLETE_SEARCH_ERROR = "Connection ended before web search finished.";
+const MISSING_MODEL_TERMINAL_ERROR =
+  "This model never reached a terminal response state.";
+const MISSING_SEARCH_TERMINAL_ERROR =
+  "Web search never reached a terminal response state.";
+
+const settleTurnAfterStream = (
+  turn: MultiChatTurn,
+  sawDoneEvent: boolean,
+): MultiChatTurn => {
+  const models = { ...turn.models };
+
+  for (const modelId of turn.selectedModels) {
+    const modelState = models[modelId];
+
+    if (!modelState || modelState.status === "idle") {
+      models[modelId] = {
+        content: modelState?.content ?? "",
+        status: "error",
+        error: sawDoneEvent
+          ? MISSING_MODEL_TERMINAL_ERROR
+          : INCOMPLETE_MODEL_ERROR,
+      };
+      continue;
+    }
+
+    if (modelState.status === "streaming") {
+      models[modelId] = modelState.content
+        ? { ...modelState, status: "done" }
+        : {
+            ...modelState,
+            status: "error",
+            error: sawDoneEvent
+              ? MISSING_MODEL_TERMINAL_ERROR
+              : INCOMPLETE_MODEL_ERROR,
+          };
+    }
+  }
+
+  const successfulModels = turn.selectedModels.filter(
+    (modelId) => models[modelId]?.status === "done",
+  );
+
+  let summaryStatus = turn.summaryStatus;
+  let summaryError = turn.summaryError;
+
+  if (summaryStatus === "streaming") {
+    if (turn.summary) {
+      summaryStatus = "done";
+    } else {
+      summaryStatus = "error";
+      summaryError = summaryError ?? INCOMPLETE_SUMMARY_ERROR;
+    }
+  } else if (summaryStatus === "idle") {
+    if (turn.summary) {
+      summaryStatus = "done";
+    } else {
+      summaryStatus = "error";
+      summaryError =
+        summaryError ??
+        (successfulModels.length > 0
+          ? sawDoneEvent
+            ? "Summary was not returned."
+            : INCOMPLETE_SUMMARY_ERROR
+          : "No successful model responses.");
+    }
+  }
+
+  let searchStatus = turn.searchStatus;
+  let searchError = turn.searchError;
+
+  if (turn.webSearch && searchStatus === "searching") {
+    searchStatus = turn.searchResults.length > 0 ? "done" : "error";
+    searchError =
+      searchError ??
+      (turn.searchResults.length > 0
+        ? undefined
+        : sawDoneEvent
+          ? MISSING_SEARCH_TERMINAL_ERROR
+          : INCOMPLETE_SEARCH_ERROR);
+  }
+
+  return {
+    ...turn,
+    models,
+    summaryStatus,
+    summaryError,
+    searchStatus,
+    searchError,
+  };
+};
+
 interface Props {
   chatId: string;
 }
@@ -63,10 +163,14 @@ interface Props {
 export default function MultiChat({ chatId }: Props) {
   const [, navigate] = useLocation();
   const [selectedModels, setSelectedModels] = useState<Set<ModelId>>(
-    new Set(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[])
+    new Set([
+      "gpt-5.2",
+      "claude-opus-4-6",
+      "gemini-3.1-pro-preview",
+    ] as ModelId[]),
   );
   const [prompt, setPrompt] = useState("");
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<MultiChatTurn[]>([]);
   const [appStatus, setAppStatus] = useState<AppStatus>("idle");
   const [fp, setFp] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -93,7 +197,7 @@ export default function MultiChat({ chatId }: Props) {
   }, [turns]);
 
   const persistChat = useCallback(
-    (nextTurns: Turn[], models: Set<ModelId>) => {
+    (nextTurns: MultiChatTurn[], models: Set<ModelId>) => {
       if (!fp) return;
       saveChat({
         id: chatId,
@@ -105,7 +209,7 @@ export default function MultiChat({ chatId }: Props) {
         updatedAt: Date.now(),
       });
     },
-    [chatId, fp]
+    [chatId, fp],
   );
 
   const toggleModel = (id: ModelId) => {
@@ -124,7 +228,8 @@ export default function MultiChat({ chatId }: Props) {
 
   const handleSubmit = useCallback(async () => {
     const trimmed = prompt.trim();
-    if (!trimmed || appStatus === "streaming" || selectedModels.size < 2) return;
+    if (!trimmed || appStatus === "streaming" || selectedModels.size < 2)
+      return;
 
     abortRef.current = new AbortController();
     setAppStatus("streaming");
@@ -137,7 +242,7 @@ export default function MultiChat({ chatId }: Props) {
       initialModels[id] = { content: "", status: "idle" };
     }
 
-    const newTurn: Turn = {
+    const newTurn: MultiChatTurn = {
       id: turnId,
       prompt: trimmed,
       selectedModels: modelIds,
@@ -152,8 +257,155 @@ export default function MultiChat({ chatId }: Props) {
     const nextTurns = [...turns, newTurn];
     setTurns(nextTurns);
 
-    const updateTurn = (updater: (t: Turn) => Turn) => {
+    const updateTurn = (updater: (t: MultiChatTurn) => MultiChatTurn) => {
       setTurns((prev) => prev.map((t) => (t.id === turnId ? updater(t) : t)));
+    };
+
+    let sawDoneEvent = false;
+
+    const handleEvent = (event: Record<string, unknown>) => {
+      const modelId = event.model as ModelId | undefined;
+
+      switch (event.type) {
+        case "search_start":
+          updateTurn((t) => ({
+            ...t,
+            searchStatus: "searching",
+            searchError: undefined,
+            searchResults: [],
+          }));
+          break;
+        case "search_done":
+          updateTurn((t) => ({
+            ...t,
+            searchStatus: "done",
+            searchError: undefined,
+            searchResults: Array.isArray(event.results)
+              ? event.results
+                  .filter(
+                    (
+                      result,
+                    ): result is {
+                      title: string;
+                      url: string;
+                    } => {
+                      if (!result || typeof result !== "object") return false;
+
+                      const { title, url } = result as {
+                        title?: unknown;
+                        url?: unknown;
+                      };
+
+                      return (
+                        typeof title === "string" && typeof url === "string"
+                      );
+                    },
+                  )
+                  .map(({ title, url }) => ({ title, url }))
+              : [],
+          }));
+          break;
+        case "search_error":
+          updateTurn((t) => ({
+            ...t,
+            searchStatus: "error",
+            searchError:
+              typeof event.error === "string"
+                ? event.error
+                : "Web search failed.",
+          }));
+          break;
+        case "model_start":
+          if (!modelId) break;
+          updateTurn((t) => ({
+            ...t,
+            models: {
+              ...t.models,
+              [modelId]: { content: "", status: "streaming" },
+            },
+          }));
+          break;
+        case "model_chunk":
+          if (!modelId || typeof event.content !== "string") break;
+          updateTurn((t) => ({
+            ...t,
+            models: {
+              ...t.models,
+              [modelId]: {
+                ...t.models[modelId]!,
+                content: t.models[modelId]!.content + event.content,
+              },
+            },
+          }));
+          break;
+        case "model_done":
+          if (!modelId) break;
+          updateTurn((t) => ({
+            ...t,
+            models: {
+              ...t.models,
+              [modelId]: { ...t.models[modelId]!, status: "done" },
+            },
+          }));
+          break;
+        case "model_error":
+          if (!modelId) break;
+          updateTurn((t) => ({
+            ...t,
+            models: {
+              ...t.models,
+              [modelId]: {
+                ...t.models[modelId]!,
+                status: "error",
+                error:
+                  typeof event.error === "string"
+                    ? event.error
+                    : "Model response failed.",
+              },
+            },
+          }));
+          break;
+        case "summary_start":
+          updateTurn((t) => ({
+            ...t,
+            summaryStatus: "streaming",
+            summaryError: undefined,
+          }));
+          break;
+        case "summary_chunk":
+          if (typeof event.content !== "string") break;
+          updateTurn((t) => ({
+            ...t,
+            summary: t.summary + event.content,
+          }));
+          break;
+        case "summary_done":
+          updateTurn((t) => ({ ...t, summaryStatus: "done" }));
+          break;
+        case "summary_error":
+          updateTurn((t) => ({
+            ...t,
+            summaryStatus: "error",
+            summaryError:
+              typeof event.error === "string" ? event.error : "Summary failed.",
+          }));
+          break;
+        case "done":
+          sawDoneEvent = true;
+          break;
+      }
+    };
+
+    const processSseChunk = (chunk: string) => {
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+
+        try {
+          handleEvent(JSON.parse(line.slice(6)) as Record<string, unknown>);
+        } catch {}
+      }
     };
 
     try {
@@ -175,90 +427,27 @@ export default function MultiChat({ chatId }: Props) {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          buffer += decoder.decode();
+          if (buffer) {
+            processSseChunk(buffer);
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            const modelId = event.model as ModelId | undefined;
-
-            switch (event.type) {
-              case "model_start":
-                if (!modelId) break;
-                updateTurn((t) => ({
-                  ...t,
-                  models: {
-                    ...t.models,
-                    [modelId]: { content: "", status: "streaming" },
-                  },
-                }));
-                break;
-              case "model_chunk":
-                if (!modelId || !event.content) break;
-                updateTurn((t) => ({
-                  ...t,
-                  models: {
-                    ...t.models,
-                    [modelId]: {
-                      ...t.models[modelId]!,
-                      content: t.models[modelId]!.content + event.content,
-                    },
-                  },
-                }));
-                break;
-              case "model_done":
-                if (!modelId) break;
-                updateTurn((t) => ({
-                  ...t,
-                  models: {
-                    ...t.models,
-                    [modelId]: { ...t.models[modelId]!, status: "done" },
-                  },
-                }));
-                break;
-              case "model_error":
-                if (!modelId) break;
-                updateTurn((t) => ({
-                  ...t,
-                  models: {
-                    ...t.models,
-                    [modelId]: {
-                      ...t.models[modelId]!,
-                      status: "error",
-                      error: event.error,
-                    },
-                  },
-                }));
-                break;
-              case "summary_start":
-                updateTurn((t) => ({ ...t, summaryStatus: "streaming" }));
-                break;
-              case "summary_chunk":
-                if (!event.content) break;
-                updateTurn((t) => ({
-                  ...t,
-                  summary: t.summary + event.content,
-                }));
-                break;
-              case "summary_done":
-                updateTurn((t) => ({ ...t, summaryStatus: "done" }));
-                break;
-              case "summary_error":
-                updateTurn((t) => ({ ...t, summaryStatus: "error" }));
-                break;
-            }
-          } catch {}
-        }
+        processSseChunk(lines.join("\n"));
       }
 
       setTurns((finalTurns) => {
-        persistChat(finalTurns, selectedModels);
-        return finalTurns;
+        const settledTurns = finalTurns.map((turn) =>
+          turn.id === turnId ? settleTurnAfterStream(turn, sawDoneEvent) : turn,
+        );
+
+        persistChat(settledTurns, selectedModels);
+        return settledTurns;
       });
       setAppStatus("idle");
     } catch (err) {
@@ -266,7 +455,6 @@ export default function MultiChat({ chatId }: Props) {
         setAppStatus("idle");
         return;
       }
-      console.error(err);
       setAppStatus("idle");
     }
   }, [prompt, appStatus, selectedModels, turns, persistChat]);
@@ -304,7 +492,12 @@ export default function MultiChat({ chatId }: Props) {
               aria-label="Open menu"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path
+                  d="M2 4h12M2 8h12M2 12h12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
             <button
@@ -362,14 +555,13 @@ export default function MultiChat({ chatId }: Props) {
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
                   active ? m.chipActive : m.chipInactive,
-                  appStatus === "streaming" &&
-                    "opacity-50 cursor-not-allowed"
+                  appStatus === "streaming" && "opacity-50 cursor-not-allowed",
                 )}
               >
                 <span
                   className={cn(
                     "w-4 h-4 rounded-sm flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0",
-                    m.color
+                    m.color,
                   )}
                 >
                   {m.icon}
@@ -401,7 +593,9 @@ export default function MultiChat({ chatId }: Props) {
         ) : (
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-8">
             {turns.map((turn) => {
-              const modelList = turn.selectedModels.map((id) => MODEL_MAP[id]).filter(Boolean);
+              const modelList = turn.selectedModels
+                .map((id) => MODEL_MAP[id])
+                .filter(Boolean);
               return (
                 <div key={turn.id} className="space-y-4">
                   <div className="flex justify-end">
@@ -415,7 +609,7 @@ export default function MultiChat({ chatId }: Props) {
                       "grid gap-px bg-gray-800 rounded-xl overflow-hidden border border-gray-800",
                       modelList.length === 2
                         ? "grid-cols-1 sm:grid-cols-2"
-                        : "grid-cols-1 sm:grid-cols-3"
+                        : "grid-cols-1 sm:grid-cols-3",
                     )}
                   >
                     {modelList.map((m) => {
@@ -428,13 +622,13 @@ export default function MultiChat({ chatId }: Props) {
                           <div
                             className={cn(
                               "flex items-center gap-2 px-3 py-2 border-b",
-                              m.headerClass
+                              m.headerClass,
                             )}
                           >
                             <span
                               className={cn(
                                 "w-5 h-5 rounded flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0",
-                                m.color
+                                m.color,
                               )}
                             >
                               {m.icon}
@@ -470,6 +664,58 @@ export default function MultiChat({ chatId }: Props) {
                     })}
                   </div>
 
+                  {turn.webSearch && (
+                    <div className="rounded-xl border border-gray-800 bg-gray-900/60 px-4 py-3 space-y-3">
+                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">
+                        <span
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            turn.searchStatus === "done"
+                              ? "bg-emerald-400"
+                              : turn.searchStatus === "error"
+                                ? "bg-red-400"
+                                : "bg-amber-400 animate-pulse",
+                          )}
+                        />
+                        Web search
+                      </div>
+
+                      {turn.searchStatus === "searching" ? (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                          <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-400 animate-spin" />
+                          Searching sources…
+                        </div>
+                      ) : turn.searchStatus === "error" ? (
+                        <p className="text-xs text-red-400">
+                          {turn.searchError ?? "Web search failed."}
+                        </p>
+                      ) : turn.searchResults.length > 0 ? (
+                        <div className="space-y-2">
+                          {turn.searchResults.map((result) => (
+                            <a
+                              key={result.url}
+                              href={result.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block rounded-lg border border-gray-800 bg-gray-950/70 px-3 py-2 transition-colors hover:border-gray-700"
+                            >
+                              <p className="text-xs font-medium text-gray-200">
+                                {result.title}
+                              </p>
+                              <p className="mt-1 text-[11px] text-gray-500 break-all">
+                                {result.url}
+                              </p>
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500">
+                          Search finished without any linked sources.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex justify-start">
                     <div className="max-w-[85%] flex gap-3">
                       <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
@@ -483,7 +729,7 @@ export default function MultiChat({ chatId }: Props) {
                           </span>
                         ) : turn.summaryStatus === "error" ? (
                           <span className="text-xs text-red-400">
-                            Summary failed.
+                            {turn.summaryError ?? "Summary failed."}
                           </span>
                         ) : (
                           <>

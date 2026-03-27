@@ -9,8 +9,7 @@ interface MarkdownProps {
 
 export function Markdown({ children, className }: MarkdownProps) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+    <div
       className={cn(
         "prose prose-invert prose-sm max-w-none",
         "prose-p:my-1.5 prose-p:leading-relaxed",
@@ -27,37 +26,44 @@ export function Markdown({ children, className }: MarkdownProps) {
         "prose-a:text-violet-400 prose-a:no-underline hover:prose-a:underline",
         "prose-hr:border-gray-700",
         "prose-table:text-xs prose-th:border prose-th:border-gray-700 prose-th:p-2 prose-td:border prose-td:border-gray-700 prose-td:p-2",
-        className
+        className,
       )}
-      components={{
-        pre({ children, ...props }) {
-          return (
-            <pre {...props} className="not-prose bg-gray-800 border border-gray-700 rounded-lg p-3 overflow-x-auto my-2">
-              {children}
-            </pre>
-          );
-        },
-        code({ className, children, ...props }) {
-          const isBlock = className?.startsWith("language-");
-          if (isBlock) {
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          pre({ children, ...props }) {
             return (
-              <code className="text-xs font-mono text-gray-200" {...props}>
+              <pre
+                {...props}
+                className="not-prose bg-gray-800 border border-gray-700 rounded-lg p-3 overflow-x-auto my-2"
+              >
+                {children}
+              </pre>
+            );
+          },
+          code({ className, children, ...props }) {
+            const isBlock = className?.startsWith("language-");
+            if (isBlock) {
+              return (
+                <code className="text-xs font-mono text-gray-200" {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code
+                className="bg-gray-800 text-gray-200 px-1 py-0.5 rounded text-xs font-mono"
+                {...props}
+              >
                 {children}
               </code>
             );
-          }
-          return (
-            <code
-              className="bg-gray-800 text-gray-200 px-1 py-0.5 rounded text-xs font-mono"
-              {...props}
-            >
-              {children}
-            </code>
-          );
-        },
-      }}
-    >
-      {children}
-    </ReactMarkdown>
+          },
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
   );
 }
