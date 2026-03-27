@@ -457,7 +457,7 @@ export default function MultiChat({ chatId }: Props) {
       }
       setAppStatus("idle");
     }
-  }, [prompt, appStatus, selectedModels, turns, persistChat]);
+  }, [prompt, appStatus, selectedModels, turns, persistChat, webSearch]);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -751,27 +751,59 @@ export default function MultiChat({ chatId }: Props) {
       </div>
 
       <div className="border-t border-gray-800 bg-gray-900/30 px-4 sm:px-6 py-3 flex-shrink-0">
-        <div className="max-w-5xl mx-auto flex gap-3 items-end">
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            placeholder="Message all models…  (Ctrl+Enter to send)"
-            className="flex-1 bg-gray-950/60 border-gray-800 text-gray-100 placeholder:text-gray-600 resize-none min-h-[72px] max-h-[200px] focus:border-violet-500 focus:ring-violet-500/20"
-            disabled={appStatus === "streaming"}
-          />
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSend}
-            className="bg-violet-600 hover:bg-violet-700 text-white px-5 h-10 flex-shrink-0"
-          >
-            Send
-          </Button>
+        <div className="max-w-5xl mx-auto space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setWebSearch((v) => !v)}
+              disabled={appStatus === "streaming"}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
+                webSearch
+                  ? "bg-sky-900/60 border-sky-500 text-sky-300"
+                  : "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+                appStatus === "streaming" && "opacity-50 cursor-not-allowed",
+              )}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              Web Search
+            </button>
+          </div>
+          <div className="flex gap-3 items-end">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Message all models…  (Ctrl+Enter to send)"
+              className="flex-1 bg-gray-950/60 border-gray-800 text-gray-100 placeholder:text-gray-600 resize-none min-h-[72px] max-h-[200px] focus:border-violet-500 focus:ring-violet-500/20"
+              disabled={appStatus === "streaming"}
+            />
+            <Button
+              onClick={handleSubmit}
+              disabled={!canSend}
+              className="bg-violet-600 hover:bg-violet-700 text-white px-5 h-10 flex-shrink-0"
+            >
+              Send
+            </Button>
+          </div>
         </div>
       </div>
     </div>

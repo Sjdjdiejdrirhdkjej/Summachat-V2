@@ -33,9 +33,9 @@ type StreamRequestContext = {
   signal: AbortSignal;
 };
 
-const PROVIDER_OVERALL_TIMEOUT_MS = 60_000;
-const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 20_000;
-const PROVIDER_HARD_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS + 5_000;
+const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
+const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
+const PROVIDER_HARD_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS + 10_000;
 
 const MultiChatSchema = z.object({
   prompt: z.string().min(1),
@@ -180,6 +180,7 @@ async function callSummarizer(
         {
           model: "gpt-5.2",
           max_completion_tokens: 8192,
+          reasoning_effort: "xhigh",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },

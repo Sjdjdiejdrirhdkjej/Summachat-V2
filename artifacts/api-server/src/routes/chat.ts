@@ -44,8 +44,8 @@ type StreamRequestContext = {
 
 type ChatProvider = z.infer<typeof ChatSchema>["model"];
 
-const PROVIDER_OVERALL_TIMEOUT_MS = 60_000;
-const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 20_000;
+const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
+const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
 
 function toOpenAiMessages(messages: ChatMessage[]) {
   return messages.map((m) => ({ role: m.role, content: m.content })) as {
