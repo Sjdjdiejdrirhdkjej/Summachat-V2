@@ -6,6 +6,8 @@ id = "artifacts/api-server"
 [[artifacts]]
 id = "artifacts/mockup-sandbox"
 
+install = "pnpm install"
+
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
