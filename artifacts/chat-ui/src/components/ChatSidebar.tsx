@@ -169,7 +169,7 @@ export function ChatSidebar({ open, onClose, currentChatId }: Props) {
                     <button
                       type="button"
                       onClick={(e) => handleDelete(chat.id, e)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all flex-shrink-0 p-0.5 rounded mt-0.5"
+                      className="text-gray-600 hover:text-red-400 transition-colors flex-shrink-0 p-1 rounded mt-0.5"
                       aria-label="Delete"
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

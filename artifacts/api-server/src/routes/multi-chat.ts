@@ -249,6 +249,16 @@ async function callGemini(
   }
 }
 
+function partialTagOverlap(text: string, tag: string): number {
+  const maxCheck = Math.min(text.length, tag.length - 1);
+  for (let len = maxCheck; len >= 1; len--) {
+    if (text.endsWith(tag.slice(0, len))) {
+      return len;
+    }
+  }
+  return 0;
+}
+
 async function callSummarizer(
   prompt: string,
   responses: { model: ModelId; label: string; response: string }[],
@@ -260,10 +270,65 @@ async function callSummarizer(
     .map((r) => `### ${r.label}\n${r.response}`)
     .join("\n\n");
 
-  const systemPrompt = `You are a summariser. You will be given a user's question and several responses to it. Write a single, clear, concise summary of those responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
-  const userMessage = `User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nSummarise these responses.`;
+  const systemPrompt = `You are a summariser. You will be given a user's question and several responses to it.
 
-  return runGuardedProviderStream({
+Before writing your summary, reason through the responses inside <thinking>...</thinking> tags. In your thinking, consider:
+- What unique insights each response offers
+- Where the responses agree and disagree
+- Which points are most accurate and helpful
+- How to best synthesize the information into a coherent answer
+
+After closing the </thinking> tag, write a single, clear, concise summary that combines the best insights from all responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
+  const userMessage = `User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nReason through the responses in <thinking> tags, then summarise.`;
+
+  const OPEN_TAG = "<thinking>";
+  const CLOSE_TAG = "</thinking>";
+  let insideThinking = false;
+  let tagBuffer = "";
+
+  const processText = (text: string) => {
+    tagBuffer += text;
+
+    while (tagBuffer.length > 0) {
+      if (!insideThinking) {
+        const openIdx = tagBuffer.indexOf(OPEN_TAG);
+        if (openIdx === -1) {
+          const overlap = partialTagOverlap(tagBuffer, OPEN_TAG);
+          const safe = tagBuffer.slice(0, tagBuffer.length - overlap);
+          if (safe) onChunk(safe);
+          tagBuffer = tagBuffer.slice(tagBuffer.length - overlap);
+          break;
+        }
+        if (openIdx > 0) onChunk(tagBuffer.slice(0, openIdx));
+        tagBuffer = tagBuffer.slice(openIdx + OPEN_TAG.length);
+        insideThinking = true;
+      } else {
+        const closeIdx = tagBuffer.indexOf(CLOSE_TAG);
+        if (closeIdx === -1) {
+          const overlap = partialTagOverlap(tagBuffer, CLOSE_TAG);
+          const safe = tagBuffer.slice(0, tagBuffer.length - overlap);
+          if (safe) onThinkingChunk(safe);
+          tagBuffer = tagBuffer.slice(tagBuffer.length - overlap);
+          break;
+        }
+        if (closeIdx > 0) onThinkingChunk(tagBuffer.slice(0, closeIdx));
+        tagBuffer = tagBuffer.slice(closeIdx + CLOSE_TAG.length);
+        insideThinking = false;
+      }
+    }
+  };
+
+  const flushBuffer = () => {
+    if (!tagBuffer) return;
+    if (insideThinking) {
+      onThinkingChunk(tagBuffer);
+    } else {
+      onChunk(tagBuffer);
+    }
+    tagBuffer = "";
+  };
+
+  const result = await runGuardedProviderStream({
     provider: "openai:gpt-5.2-summary",
     requestId: context.requestId,
     logger: context.logger,
@@ -274,8 +339,7 @@ async function callSummarizer(
       const stream = await openai.chat.completions.create(
         {
           model: "gpt-5.2",
-          max_completion_tokens: 8192,
-          reasoning_effort: "xhigh",
+          max_completion_tokens: 16384,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },
@@ -286,18 +350,12 @@ async function callSummarizer(
       );
       return { stream };
     },
-    getChunkText: (chunk) => {
-      const delta = chunk.choices[0]?.delta;
-      if (delta && "reasoning_content" in delta) {
-        const reasoning = (delta as (typeof delta) & { reasoning_content?: string | null }).reasoning_content;
-        if (reasoning) {
-          onThinkingChunk(reasoning);
-        }
-      }
-      return delta?.content;
-    },
-    onChunk,
+    getChunkText: (chunk) => chunk.choices[0]?.delta?.content,
+    onChunk: processText,
   });
+
+  flushBuffer();
+  return result;
 }
 
 function toTerminalError(result: GuardedProviderStreamResult): string | null {

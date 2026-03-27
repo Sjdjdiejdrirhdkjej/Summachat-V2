@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -156,6 +156,22 @@ const settleTurnAfterStream = (
   };
 };
 
+function AutoScrollBox({ streaming, className, children }: { streaming: boolean; className?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (streaming && ref.current) {
+      ref.current.scrollTop = ref.current.scrollHeight;
+    }
+  });
+
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
+}
+
 interface Props {
   chatId: string;
 }
@@ -174,6 +190,7 @@ export default function MultiChat({ chatId }: Props) {
   const [appStatus, setAppStatus] = useState<AppStatus>("idle");
   const [fp, setFp] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
   const [webSearch, setWebSearch] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -483,7 +500,7 @@ export default function MultiChat({ chatId }: Props) {
     appStatus === "idle";
 
   return (
-    <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
+    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
       <ChatSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -622,14 +639,29 @@ export default function MultiChat({ chatId }: Props) {
                   >
                     {modelList.map((m) => {
                       const ms = turn.models[m.id];
+                      const panelKey = `${turn.id}-${m.id}`;
+                      const isExpanded = expandedPanels.has(panelKey);
+                      const canExpand = ms?.status === "done" || ms?.status === "error";
+                      const toggleExpand = () => {
+                        if (!canExpand) return;
+                        setExpandedPanels((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(panelKey)) {
+                            next.delete(panelKey);
+                          } else {
+                            next.add(panelKey);
+                          }
+                          return next;
+                        });
+                      };
                       return (
                         <div
                           key={m.id}
-                          className="flex flex-col bg-gray-950 min-h-[120px]"
+                          className="flex flex-col bg-gray-950 min-h-[10rem]"
                         >
                           <div
                             className={cn(
-                              "flex items-center gap-2 px-3 py-2 border-b",
+                              "flex items-center gap-2 px-3 py-2 border-b flex-shrink-0",
                               m.headerClass,
                             )}
                           >
@@ -644,27 +676,64 @@ export default function MultiChat({ chatId }: Props) {
                             <span className="text-[11px] font-medium text-gray-300">
                               {m.label}
                             </span>
-                            {ms?.status === "streaming" && (
+                            {ms?.status === "streaming" ? (
                               <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-                            )}
+                            ) : canExpand && ms?.content ? (
+                              <button
+                                type="button"
+                                onClick={toggleExpand}
+                                className="ml-auto text-gray-500 hover:text-gray-300 transition-colors p-0.5 rounded"
+                                aria-label={isExpanded ? "Collapse" : "Expand"}
+                              >
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className={cn("transition-transform", isExpanded && "rotate-180")}
+                                >
+                                  <path d="m6 9 6 6 6-6" />
+                                </svg>
+                              </button>
+                            ) : null}
                           </div>
-                          <div className="p-3 flex-1">
-                            {!ms || ms.status === "idle" ? (
-                              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
-                                Waiting…
-                              </div>
-                            ) : ms.status === "error" ? (
-                              <p className="text-xs text-red-400">
-                                {ms.error ?? "Error"}
-                              </p>
-                            ) : (
-                              <div className="text-xs">
-                                <Markdown>{ms.content}</Markdown>
-                                {ms.status === "streaming" && (
-                                  <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
-                                )}
-                              </div>
+                          <div
+                            className={cn("relative", canExpand && !isExpanded && "cursor-pointer")}
+                            onClick={canExpand && !isExpanded ? toggleExpand : undefined}
+                          >
+                            <AutoScrollBox
+                              streaming={ms?.status === "streaming"}
+                              className={cn(
+                                "p-3 overflow-y-auto",
+                                isExpanded ? "max-h-[60vh]" : "max-h-[10rem]",
+                              )}
+                            >
+                              {!ms || ms.status === "idle" ? (
+                                <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                  <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                                  Waiting…
+                                </div>
+                              ) : ms.status === "error" ? (
+                                <p className="text-xs text-red-400">
+                                  {ms.error ?? "Error"}
+                                </p>
+                              ) : (
+                                <div className="text-xs">
+                                  <Markdown>{ms.content}</Markdown>
+                                  {ms.status === "streaming" && (
+                                    <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
+                                  )}
+                                </div>
+                              )}
+                            </AutoScrollBox>
+                            {!isExpanded && canExpand && ms?.content && (
+                              <div
+                                className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none"
+                              />
                             )}
                           </div>
                         </div>
@@ -691,8 +760,8 @@ export default function MultiChat({ chatId }: Props) {
                         ) : (
                           <>
                             {turn.summaryThinking && (
-                              <details className="mb-3 group">
-                                <summary className="text-[11px] text-gray-500 cursor-pointer hover:text-gray-400 select-none flex items-center gap-1.5 transition-colors">
+                              <details open className="mb-3 group">
+                                <summary className="text-[11px] text-violet-400 cursor-pointer hover:text-violet-300 select-none flex items-center gap-1.5 transition-colors font-medium">
                                   <svg
                                     width="12"
                                     height="12"
@@ -706,14 +775,20 @@ export default function MultiChat({ chatId }: Props) {
                                   >
                                     <path d="m9 18 6-6-6-6" />
                                   </svg>
-                                  Thinking
+                                  Reasoning
                                   {turn.summaryStatus === "streaming" && !turn.summary && (
                                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
                                   )}
                                 </summary>
-                                <div className="mt-2 p-3 bg-gray-950/60 border border-gray-800 rounded-lg text-xs text-gray-400 leading-relaxed">
+                                <AutoScrollBox
+                                  streaming={turn.summaryStatus === "streaming" && !turn.summary}
+                                  className="mt-2 p-3 bg-violet-950/30 border border-violet-900/50 rounded-lg text-xs text-gray-400 leading-relaxed max-h-[10rem] overflow-y-auto"
+                                >
                                   <Markdown>{turn.summaryThinking}</Markdown>
-                                </div>
+                                  {turn.summaryStatus === "streaming" && !turn.summary && (
+                                    <span className="inline-block w-1 h-3.5 bg-violet-400 ml-0.5 animate-pulse align-text-bottom" />
+                                  )}
+                                </AutoScrollBox>
                               </details>
                             )}
                             {!turn.summary && turn.summaryStatus === "streaming" && !turn.summaryThinking ? (
