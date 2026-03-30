@@ -60,6 +60,16 @@ function classifyAborted(
   return "aborted";
 }
 
+export function toTerminalError(
+  result: GuardedProviderStreamResult,
+): string | null {
+  if (result.status === "success") return null;
+  if (result.status === "timed_out") return "Provider stream timed out";
+  if (result.status === "aborted") return "Provider stream aborted";
+  if (result.status === "empty") return "Provider returned empty output";
+  return result.error?.message ?? "Provider stream failed";
+}
+
 export async function runGuardedProviderStream<TChunk>(
   options: GuardedProviderStreamOptions<TChunk>,
 ): Promise<GuardedProviderStreamResult> {

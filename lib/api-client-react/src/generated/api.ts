@@ -5,18 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ChatHistoryResponse,
+  ChatQueryRequest,
+  ChatQueryResponse,
+  ChatSession,
+  CreateImageGenerationRequest,
+  GeneratedImageRecord,
+  HealthStatus,
+  ListGeneratedImagesResponse,
+  Problem,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +105,511 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Sends the same prompt to all selected models and returns a session ID for streaming
+ * @summary Send a query to multiple models
+ */
+export const getChatQueryUrl = () => {
+  return `/api/chat/query`;
+};
+
+export const chatQuery = async (
+  chatQueryRequest: ChatQueryRequest,
+  options?: RequestInit,
+): Promise<ChatQueryResponse> => {
+  return customFetch<ChatQueryResponse>(getChatQueryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chatQueryRequest),
+  });
+};
+
+export const getChatQueryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof chatQuery>>,
+    TError,
+    { data: BodyType<ChatQueryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof chatQuery>>,
+  TError,
+  { data: BodyType<ChatQueryRequest> },
+  TContext
+> => {
+  const mutationKey = ["chatQuery"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof chatQuery>>,
+    { data: BodyType<ChatQueryRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return chatQuery(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ChatQueryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof chatQuery>>
+>;
+export type ChatQueryMutationBody = BodyType<ChatQueryRequest>;
+export type ChatQueryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Send a query to multiple models
+ */
+export const useChatQuery = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof chatQuery>>,
+    TError,
+    { data: BodyType<ChatQueryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof chatQuery>>,
+  TError,
+  { data: BodyType<ChatQueryRequest> },
+  TContext
+> => {
+  return useMutation(getChatQueryMutationOptions(options));
+};
+
+/**
+ * @summary Get all chat sessions
+ */
+export const getGetChatHistoryUrl = () => {
+  return `/api/chat/history`;
+};
+
+export const getChatHistory = async (
+  options?: RequestInit,
+): Promise<ChatHistoryResponse> => {
+  return customFetch<ChatHistoryResponse>(getGetChatHistoryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetChatHistoryQueryKey = () => {
+  return [`/api/chat/history`] as const;
+};
+
+export const getGetChatHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChatHistory>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getChatHistory>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetChatHistoryQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getChatHistory>>> = ({
+    signal,
+  }) => getChatHistory({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getChatHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetChatHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChatHistory>>
+>;
+export type GetChatHistoryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get all chat sessions
+ */
+
+export function useGetChatHistory<
+  TData = Awaited<ReturnType<typeof getChatHistory>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getChatHistory>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChatHistoryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a chat session with all model responses
+ */
+export const getGetChatSessionUrl = (sessionId: string) => {
+  return `/api/chat/sessions/${sessionId}`;
+};
+
+export const getChatSession = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<ChatSession> => {
+  return customFetch<ChatSession>(getGetChatSessionUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetChatSessionQueryKey = (sessionId: string) => {
+  return [`/api/chat/sessions/${sessionId}`] as const;
+};
+
+export const getGetChatSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChatSession>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChatSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetChatSessionQueryKey(sessionId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getChatSession>>> = ({
+    signal,
+  }) => getChatSession(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getChatSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetChatSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChatSession>>
+>;
+export type GetChatSessionQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a chat session with all model responses
+ */
+
+export function useGetChatSession<
+  TData = Awaited<ReturnType<typeof getChatSession>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChatSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChatSessionQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new image generation
+ */
+export const getCreateImageGenerationUrl = () => {
+  return `/api/images/generations`;
+};
+
+export const createImageGeneration = async (
+  createImageGenerationRequest: CreateImageGenerationRequest,
+  options?: RequestInit,
+): Promise<GeneratedImageRecord> => {
+  return customFetch<GeneratedImageRecord>(getCreateImageGenerationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createImageGenerationRequest),
+  });
+};
+
+export const getCreateImageGenerationMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createImageGeneration>>,
+    TError,
+    { data: BodyType<CreateImageGenerationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createImageGeneration>>,
+  TError,
+  { data: BodyType<CreateImageGenerationRequest> },
+  TContext
+> => {
+  const mutationKey = ["createImageGeneration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createImageGeneration>>,
+    { data: BodyType<CreateImageGenerationRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createImageGeneration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateImageGenerationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createImageGeneration>>
+>;
+export type CreateImageGenerationMutationBody =
+  BodyType<CreateImageGenerationRequest>;
+export type CreateImageGenerationMutationError = ErrorType<Problem>;
+
+/**
+ * @summary Create a new image generation
+ */
+export const useCreateImageGeneration = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createImageGeneration>>,
+    TError,
+    { data: BodyType<CreateImageGenerationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createImageGeneration>>,
+  TError,
+  { data: BodyType<CreateImageGenerationRequest> },
+  TContext
+> => {
+  return useMutation(getCreateImageGenerationMutationOptions(options));
+};
+
+/**
+ * Returns image metadata records ordered newest-first.
+ * @summary List generated images
+ */
+export const getListGeneratedImagesUrl = () => {
+  return `/api/images`;
+};
+
+export const listGeneratedImages = async (
+  options?: RequestInit,
+): Promise<ListGeneratedImagesResponse> => {
+  return customFetch<ListGeneratedImagesResponse>(getListGeneratedImagesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGeneratedImagesQueryKey = () => {
+  return [`/api/images`] as const;
+};
+
+export const getListGeneratedImagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGeneratedImages>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listGeneratedImages>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGeneratedImagesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listGeneratedImages>>
+  > = ({ signal }) => listGeneratedImages({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGeneratedImages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGeneratedImagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGeneratedImages>>
+>;
+export type ListGeneratedImagesQueryError = ErrorType<Problem>;
+
+/**
+ * @summary List generated images
+ */
+
+export function useListGeneratedImages<
+  TData = Awaited<ReturnType<typeof listGeneratedImages>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listGeneratedImages>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGeneratedImagesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get generated image content
+ */
+export const getGetGeneratedImageContentUrl = (imageId: string) => {
+  return `/api/images/${imageId}/content`;
+};
+
+export const getGeneratedImageContent = async (
+  imageId: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetGeneratedImageContentUrl(imageId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGeneratedImageContentQueryKey = (imageId: string) => {
+  return [`/api/images/${imageId}/content`] as const;
+};
+
+export const getGetGeneratedImageContentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGeneratedImageContent>>,
+  TError = ErrorType<Problem>,
+>(
+  imageId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGeneratedImageContent>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetGeneratedImageContentQueryKey(imageId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getGeneratedImageContent>>
+  > = ({ signal }) =>
+    getGeneratedImageContent(imageId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!imageId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGeneratedImageContent>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGeneratedImageContentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGeneratedImageContent>>
+>;
+export type GetGeneratedImageContentQueryError = ErrorType<Problem>;
+
+/**
+ * @summary Get generated image content
+ */
+
+export function useGetGeneratedImageContent<
+  TData = Awaited<ReturnType<typeof getGeneratedImageContent>>,
+  TError = ErrorType<Problem>,
+>(
+  imageId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGeneratedImageContent>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGeneratedImageContentQueryOptions(
+    imageId,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

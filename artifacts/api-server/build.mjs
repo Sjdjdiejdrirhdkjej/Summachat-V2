@@ -19,9 +19,17 @@ async function buildAll() {
     platform: "node",
     bundle: true,
     format: "esm",
+    splitting: true,
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
+    // Health routes are statically imported and remain in the entry chunk so
+    // deployment health checks pass immediately.  Provider-heavy routes loaded
+    // via lazyRoute() are split into separate chunks and only initialised on
+    // first request.
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
     // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
     // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
     // Examples of unbundleable packages:
@@ -29,6 +37,8 @@ async function buildAll() {
     // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
       "*.node",
+      // pino-pretty is only needed in development, externalize in production to reduce bundle size
+      ...(process.env.NODE_ENV === "production" ? ["pino-pretty"] : []),
       "sharp",
       "better-sqlite3",
       "sqlite3",
@@ -100,11 +110,18 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // Omit linked maps by default (large; NODE --enable-source-maps loads them). SOURCEMAP=1 for linked maps.
+    sourcemap: process.env["SOURCEMAP"] === "1" ? "linked" : false,
     plugins: [
-      // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      // pino relies on workers to handle logging. Only include pino-pretty in development.
+      // In production, we use the default pino file transport.
+      esbuildPluginPino({
+        transports:
+          process.env.NODE_ENV === "production" ? [] : ["pino-pretty"],
+      }),
     ],
+    // Ensure the bundle doesn’t contain lazy async worker init that can delay PID1/health checks
+    minify: false,
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';

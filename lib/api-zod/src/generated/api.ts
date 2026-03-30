@@ -14,3 +14,128 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Sends the same prompt to all selected models and returns a session ID for streaming
+ * @summary Send a query to multiple models
+ */
+
+export const chatQueryBodyModelsMin = 2;
+
+export const ChatQueryBody = zod.object({
+  prompt: zod.string().min(1),
+  models: zod
+    .array(zod.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]))
+    .min(chatQueryBodyModelsMin),
+});
+
+export const ChatQueryResponse = zod.object({
+  sessionId: zod.string(),
+  prompt: zod.string(),
+  models: zod.array(
+    zod.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]),
+  ),
+});
+
+/**
+ * @summary Get all chat sessions
+ */
+export const GetChatHistoryResponse = zod.object({
+  sessions: zod.array(
+    zod.object({
+      id: zod.string(),
+      prompt: zod.string(),
+      models: zod.array(
+        zod.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]),
+      ),
+      createdAt: zod.date().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get a chat session with all model responses
+ */
+export const GetChatSessionParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetChatSessionResponse = zod.object({
+  id: zod.string(),
+  prompt: zod.string(),
+  models: zod.array(
+    zod.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]),
+  ),
+  responses: zod.array(
+    zod.object({
+      modelId: zod.enum([
+        "gpt-5.2",
+        "claude-opus-4-6",
+        "gemini-3.1-pro-preview",
+      ]),
+      content: zod.string(),
+      status: zod.enum(["pending", "streaming", "complete", "error"]),
+      error: zod.string().optional(),
+    }),
+  ),
+  summary: zod.string().optional(),
+  summaryStatus: zod.enum(["pending", "streaming", "complete", "error"]),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * @summary Create a new image generation
+ */
+export const CreateImageGenerationHeader = zod.object({
+  "x-anonymous-owner-id": zod.string(),
+});
+
+export const createImageGenerationBodyPromptMax = 2000;
+
+export const CreateImageGenerationBody = zod.object({
+  prompt: zod.string().min(1).max(createImageGenerationBodyPromptMax),
+});
+
+/**
+ * Returns image metadata records ordered newest-first.
+ * @summary List generated images
+ */
+export const ListGeneratedImagesHeader = zod.object({
+  "x-anonymous-owner-id": zod.string(),
+});
+
+export const listGeneratedImagesResponseImagesItemByteSizeMin = 0;
+
+export const ListGeneratedImagesResponse = zod
+  .object({
+    images: zod.array(
+      zod.object({
+        id: zod.string(),
+        prompt: zod.string(),
+        enhancedPrompt: zod.string(),
+        providerRevisedPrompt: zod.string(),
+        provider: zod.string(),
+        model: zod.string(),
+        routingReason: zod.string(),
+        mimeType: zod.string(),
+        byteSize: zod
+          .number()
+          .min(listGeneratedImagesResponseImagesItemByteSizeMin),
+        status: zod.string(),
+        createdAt: zod.date(),
+        contentUrl: zod.string().url(),
+      }),
+    ),
+  })
+  .describe("Newest-first generated image metadata records.");
+
+/**
+ * @summary Get generated image content
+ */
+export const GetGeneratedImageContentParams = zod.object({
+  imageId: zod.coerce.string(),
+});
+
+export const GetGeneratedImageContentHeader = zod.object({
+  "x-anonymous-owner-id": zod.string(),
+});

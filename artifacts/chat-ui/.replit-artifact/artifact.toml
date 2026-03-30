@@ -15,7 +15,7 @@ paths = [ "/" ]
 localPort = 24918
 
 [services.development]
-run = "pnpm --filter @workspace/chat-ui run dev"
+run = "npm run -w @workspace/chat-ui dev"
 
 [services.production]
 build = [ "npm", "--prefix", "artifacts/chat-ui", "run", "build" ]

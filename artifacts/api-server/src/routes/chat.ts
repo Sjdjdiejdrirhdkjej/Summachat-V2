@@ -5,6 +5,7 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import { buildWebContext, searchWeb } from "../lib/web-search.js";
 import {
   runGuardedProviderStream,
+  toTerminalError,
   type GuardedProviderStreamResult,
 } from "../lib/provider-stream-guard.js";
 import { z } from "zod";
@@ -177,33 +178,17 @@ async function callGemini(
     overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS,
     firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS,
     externalAbortSignal: context.signal,
-    startStream: async () => {
+    startStream: async ({ signal }) => {
       const stream = (await ai.models.generateContentStream({
         model: "gemini-3.1-pro-preview",
         contents,
-        config: { maxOutputTokens: 8192 },
+        config: { maxOutputTokens: 8192, abortSignal: signal },
       })) as AsyncIterable<{ text: string }>;
       return { stream };
     },
     getChunkText: (chunk) => chunk.text,
     onChunk,
   });
-}
-
-function toTerminalError(result: GuardedProviderStreamResult): string | null {
-  if (result.status === "success") {
-    return null;
-  }
-  if (result.status === "timed_out") {
-    return "Provider stream timed out";
-  }
-  if (result.status === "aborted") {
-    return "Provider stream aborted";
-  }
-  if (result.status === "empty") {
-    return "Provider returned empty output";
-  }
-  return result.error?.message ?? "Provider stream failed";
 }
 
 function getProviderLabel(model: ChatProvider): string {

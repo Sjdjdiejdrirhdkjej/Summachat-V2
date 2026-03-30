@@ -2,9 +2,39 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { getFingerprint } from "@/lib/fingerprint";
-import { listChats, deleteChat, type StoredChat } from "@/lib/chat-store";
+import { listChats, deleteChat } from "@/lib/chat-store";
+import { listSessions, deleteSession } from "@/lib/session-store";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { cn } from "@/lib/utils";
+
+type HomeItem = {
+  id: string;
+  title: string;
+  selectedModels: string[];
+  turnCount: number;
+  updatedAt: number;
+  source: "chat" | "session";
+};
+
+function buildHomeItems(fingerprint: string): HomeItem[] {
+  const chatItems: HomeItem[] = listChats(fingerprint).map((c) => ({
+    id: c.id,
+    title: c.title,
+    selectedModels: c.selectedModels,
+    turnCount: c.turns.length,
+    updatedAt: c.updatedAt,
+    source: "chat",
+  }));
+  const sessionItems: HomeItem[] = listSessions(fingerprint).map((s) => ({
+    id: s.id,
+    title: s.title,
+    selectedModels: s.selectedModels,
+    turnCount: s.turns.length,
+    updatedAt: s.updatedAt,
+    source: "session",
+  }));
+  return [...chatItems, ...sessionItems].sort((a, b) => b.updatedAt - a.updatedAt);
+}
 
 const MODEL_COLORS: Record<string, string> = {
   "gpt-5.2": "bg-emerald-500",
@@ -30,26 +60,32 @@ function formatDate(ts: number) {
 
 export default function Home() {
   const [, navigate] = useLocation();
-  const [chats, setChats] = useState<StoredChat[]>([]);
+  const [items, setItems] = useState<HomeItem[]>([]);
   const [fp, setFp] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     getFingerprint().then((fingerprint) => {
       setFp(fingerprint);
-      setChats(listChats(fingerprint));
+      setItems(buildHomeItems(fingerprint));
     });
   }, []);
 
   const handleNew = () => {
     const id = crypto.randomUUID();
-    navigate(`/chat/${id}`);
+    navigate(`/session/${id}`);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+
+
+  const handleDeleteItem = (item: HomeItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteChat(id);
-    if (fp) setChats(listChats(fp));
+    if (item.source === "session") {
+      deleteSession(item.id);
+    } else {
+      deleteChat(item.id);
+    }
+    if (fp) setItems(buildHomeItems(fp));
   };
 
   return (
@@ -65,7 +101,12 @@ export default function Home() {
             aria-label="Open menu"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path
+                d="M2 4h12M2 8h12M2 12h12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
@@ -76,16 +117,18 @@ export default function Home() {
             <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
           </div>
         </div>
-        <Button
-          onClick={handleNew}
-          className="bg-violet-600 hover:bg-violet-700 text-white px-4 h-9 text-sm"
-        >
-          New Chat
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleNew}
+            className="bg-violet-600 hover:bg-violet-700 text-white px-4 h-9 text-sm"
+          >
+            New Session
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 py-8">
-        {chats.length === 0 ? (
+        {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <div className="text-center space-y-2">
               <p className="text-gray-400 text-sm">No chats yet</p>
@@ -105,20 +148,20 @@ export default function Home() {
             <h2 className="text-xs text-gray-500 font-medium mb-4 tracking-wide uppercase">
               Recent chats
             </h2>
-            {chats.map((chat) => (
+            {items.map((item) => (
               <button
-                key={chat.id}
+                key={`${item.source}-${item.id}`}
                 type="button"
-                onClick={() => navigate(`/chat/${chat.id}`)}
+                onClick={() => navigate(item.source === "session" ? `/session/${item.id}` : `/chat/${item.id}`)}
                 className="w-full text-left group flex items-start gap-3 p-3 rounded-xl border border-gray-800 bg-gray-900/30 hover:bg-gray-900/70 hover:border-gray-700 transition-all"
               >
                 <div className="flex gap-0.5 mt-0.5 flex-shrink-0">
-                  {chat.selectedModels.map((id) => (
+                  {item.selectedModels.map((id) => (
                     <span
                       key={id}
                       className={cn(
                         "w-3 h-3 rounded-sm flex items-center justify-center text-white text-[7px] font-bold",
-                        MODEL_COLORS[id] ?? "bg-gray-600"
+                        MODEL_COLORS[id] ?? "bg-gray-600",
                       )}
                     >
                       {MODEL_ICONS[id] ?? "?"}
@@ -126,15 +169,16 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-200 truncate">{chat.title}</p>
+                  <p className="text-sm text-gray-200 truncate">{item.title}</p>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    {chat.turns.length} {chat.turns.length === 1 ? "turn" : "turns"} ·{" "}
-                    {formatDate(chat.updatedAt)}
+                    {item.turnCount}{" "}
+                    {item.turnCount === 1 ? "turn" : "turns"} ·{" "}
+                    {formatDate(item.updatedAt)}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={(e) => handleDelete(chat.id, e)}
+                  onClick={(e) => handleDeleteItem(item, e)}
                   className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all text-xs px-1.5 py-0.5 rounded flex-shrink-0"
                   aria-label="Delete chat"
                 >

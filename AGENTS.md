@@ -10,9 +10,9 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 
 ## Repo snapshot
 
-- Package manager: `pnpm` only.
+- Package manager: `npm` or `bun` (both supported interchangeably).
 - Runtime/tooling baseline: Node.js 24, TypeScript 5.9.
-- Monorepo layout: pnpm workspaces.
+- Monorepo layout: npm workspaces.
 - Root workspace globs: `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`.
 - Root TypeScript uses project references.
 - Prettier is installed, but there is no repo-defined format script.
@@ -22,73 +22,54 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 ## Directory map
 
 - `artifacts/` — runnable apps.
-- `artifacts/api-server/` — Express 5 API server.
-- `artifacts/chat-ui/` — React + Vite app.
-- `artifacts/mockup-sandbox/` — Vite sandbox app.
+  - `artifacts/api-server/` — Express 5 API server.
+  - `artifacts/chat-ui/` — React + Vite app.
+  - `artifacts/mockup-sandbox/` — Vite sandbox app.
 - `lib/` — reusable internal packages.
-- `lib/api-spec/` — OpenAPI spec and Orval config.
-- `lib/api-zod/` — generated Zod validators.
-- `lib/api-client-react/` — generated React client.
-- `lib/db/` — Drizzle schema and database access.
+  - `lib/api-spec/` — OpenAPI spec and Orval config.
+  - `lib/api-zod/` — generated Zod validators.
+  - `lib/api-client-react/` — generated React client.
+  - `lib/db/` — Drizzle schema and database access.
+- `lib/integrations/` — external AI service integrations.
+  - `lib/integrations-anthropic-ai/` — Anthropic AI integration.
+  - `lib/integrations-gemini-ai/` — Google Gemini AI integration.
+  - `lib/integrations-openai-ai-server/` — OpenAI AI integration (server-side).
+  - `lib/integrations-openai-ai-react/` — OpenAI AI integration (React client).
 - `scripts/` — standalone TS scripts run through one workspace package.
 
 ## Commands agents should actually use
 
-### Install
+### Core commands
 
-- `pnpm install`
-- Do not use npm or yarn. Root `preinstall` rejects them.
+- Install: `npm install` or `bun install`
+- Repo-wide typecheck: `npm run typecheck`
+- Repo-wide build: `npm run build`
+- Single package: `npm run -w <workspace-name> <script>`
 
-### Root validation
+### Common package commands
 
-- `pnpm run typecheck`
-  - Preferred repo-wide validation before handoff.
-  - Root typecheck matters because TS project references connect packages.
-- `pnpm run build`
-  - Runs root typecheck first, then package builds where present.
+- API server: `-w @workspace/api-server` (dev, build, start, typecheck)
+- Chat UI: `-w @workspace/chat-ui` (dev, build, serve, typecheck)
+- Mockup sandbox: `-w @workspace/mockup-sandbox` (dev, build, preview, typecheck)
+- DB: `-w @workspace/db` (push, push-force)
+- API codegen: `npm run -w @workspace/api-spec codegen`
+- Scripts: `npm run -w @workspace/scripts <script>`
+- Integration packages: `npm run -w @workspace/integration-name <script>`
 
-### Lint / format / test
+### When to run what
 
-- Lint: no repo-defined command.
-- Format: no repo-defined command.
-- Test: no repo-defined command.
-- Single-test execution: unsupported in the current repo state because no test runner or test files were found.
+- Small package-local change: run that package's `typecheck` if available.
+- Cross-package or shared-lib change: run `npm run typecheck` from repo root.
+- Before handoff: prefer root typecheck for code changes, build for bundle-affecting changes.
+- OpenAPI changes: run codegen, then typecheck.
+- Drizzle schema changes: use `npm run -w @workspace/db push`.
 
-Do not invent `pnpm test`, `pnpm lint`, or `pnpm format` in plans or summaries unless the repo gains those commands.
+### Testing
 
-### Package-filtered command pattern
-
-Use pnpm filtering for targeted work:
-
-- `pnpm --filter <workspace-name> run <script>`
-
-Examples from the current repo:
-
-- API server dev: `pnpm --filter @workspace/api-server run dev`
-- API server build: `pnpm --filter @workspace/api-server run build`
-- API server start: `pnpm --filter @workspace/api-server run start`
-- API server typecheck: `pnpm --filter @workspace/api-server run typecheck`
-- Chat UI dev: `pnpm --filter @workspace/chat-ui run dev`
-- Chat UI build: `pnpm --filter @workspace/chat-ui run build`
-- Chat UI serve: `pnpm --filter @workspace/chat-ui run serve`
-- Chat UI typecheck: `pnpm --filter @workspace/chat-ui run typecheck`
-- Mockup sandbox dev: `pnpm --filter @workspace/mockup-sandbox run dev`
-- Mockup sandbox build: `pnpm --filter @workspace/mockup-sandbox run build`
-- Mockup sandbox preview: `pnpm --filter @workspace/mockup-sandbox run preview`
-- Mockup sandbox typecheck: `pnpm --filter @workspace/mockup-sandbox run typecheck`
-- DB schema push: `pnpm --filter @workspace/db run push`
-- DB schema force push: `pnpm --filter @workspace/db run push-force`
-- API codegen: `pnpm --filter @workspace/api-spec run codegen`
-- Scripts package pattern: `pnpm --filter @workspace/scripts run <script>`
-
-## When to run what
-
-- Small package-local change: run that package’s `typecheck` if available.
-- Cross-package or shared-lib change: run `pnpm run typecheck` from repo root.
-- Before final handoff on code changes: prefer root `pnpm run typecheck`.
-- Before final handoff on build-affecting changes: run `pnpm run build` if the change can affect bundling or package outputs.
-- If you change OpenAPI files or generated client/schema surfaces: run `pnpm --filter @workspace/api-spec run codegen`, then typecheck.
-- If you change Drizzle schema definitions and the task calls for syncing schema: use `pnpm --filter @workspace/db run push`.
+- No test runner or test files are currently configured in this repository.
+- No `test` scripts found in any package.json files.
+- No Jest, Vitest, or other test framework configurations found.
+- If adding tests, consider Vitest for consistency with Vite-based apps.
 
 ## Code style and implementation rules
 
@@ -104,7 +85,7 @@ Examples from the current repo:
 ### Formatting
 
 - Use 2-space indentation.
-- Follow the surrounding file’s semicolon style instead of normalizing unrelated lines.
+- Follow the surrounding file's semicolon style instead of normalizing unrelated lines.
 - Server and shared library files commonly use semicolons.
 - Many UI files omit semicolons.
 - Keep diffs stylistically local; do not reformat a file unless the task requires it.
@@ -132,12 +113,6 @@ Examples from the current repo:
 - Utility and helper names should be descriptive rather than abbreviated.
 - Constants that act as fixed registries or maps may use ALL_CAPS.
 
-### Exports
-
-- Reusable libraries generally favor named exports.
-- Default exports are acceptable for top-level app objects, routers, pages, and similar single-purpose entry files.
-- Follow the surrounding file’s export style when editing an existing module.
-
 ### Error handling
 
 - Fail fast for required environment variables during startup/config initialization.
@@ -145,27 +120,16 @@ Examples from the current repo:
 - Do not swallow errors with empty catch blocks.
 - Prefer structured error types or clear error payloads over ad hoc string-only flows when the module already has a pattern for that.
 
-### Logging and secrets
-
-- Server logging uses pino.
-- Preserve redaction of sensitive headers/cookies when touching logging.
-- Never log secrets, auth headers, cookies, or raw credentials.
-
 ## Architecture notes agents should preserve
 
 - Keep the monorepo split clear: apps in `artifacts/`, reusable code in `lib/`, utility scripts in `scripts/`.
-- Root TypeScript project references are part of the build graph; update references when adding new package dependencies that require them.
+- Root TypeScript project references are part of the build graph and specifically configure lib packages for incremental compilation. Update references when adding new package dependencies that require them.
 - The API flow is schema/codegen-driven:
   - OpenAPI spec lives in `lib/api-spec/`.
   - Orval generates clients into sibling packages.
   - Server routes consume generated validators and shared libs.
 - Database code follows a schema-plus-inferred-types pattern.
-
-## Dependency and supply-chain rules
-
-- Do not switch package managers.
-- Do not remove or disable `minimumReleaseAge` protections in `pnpm-workspace.yaml`.
-- If adding dependencies, keep workspace/catalog usage consistent with surrounding manifests.
+- Server logging uses pino with redaction of sensitive headers/cookies.
 
 ## Working norms for agents
 
@@ -173,16 +137,12 @@ Examples from the current repo:
 - Read adjacent files before introducing a new pattern.
 - If conventions differ by area, follow the area you are editing instead of forcing uniformity.
 - Do not claim lint, format, or test coverage that does not exist.
-- If asked for a single test command, state that the repo currently has no supported single-test command.
 - When summarizing validation, distinguish between package-local typecheck and root typecheck.
 
-## Handy quick reference
+## Important constraints
 
-- Repo-wide typecheck: `pnpm run typecheck`
-- Repo-wide build: `pnpm run build`
-- Run one package script: `pnpm --filter <workspace-name> run <script>`
-- Regenerate API client/schema code: `pnpm --filter @workspace/api-spec run codegen`
-- Push DB schema: `pnpm --filter @workspace/db run push`
-- Run scripts workspace script: `pnpm --filter @workspace/scripts run <script>`
+- Do not switch to a different package manager without user approval.
+- If adding dependencies, keep workspace usage consistent with surrounding manifests.
+- Never log secrets, auth headers, cookies, or raw credentials.
 
 If this repo later adds Cursor rules, Copilot instructions, linting, formatting, or tests, update this file to reflect the new source of truth.

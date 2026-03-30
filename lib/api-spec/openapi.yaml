@@ -11,6 +11,8 @@ tags:
     description: Health operations
   - name: chat
     description: Multi-model chat operations
+  - name: images
+    description: AI image generation and retrieval operations
 paths:
   /healthz:
     get:
@@ -78,7 +80,162 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChatSession"
 
+  /images/generations:
+    post:
+      operationId: createImageGeneration
+      tags: [images]
+      summary: Create a new image generation
+      parameters:
+        - $ref: "#/components/parameters/AnonymousOwnerIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateImageGenerationRequest"
+      responses:
+        "201":
+          description: Image generation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedImageRecord"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /images:
+    get:
+      operationId: listGeneratedImages
+      tags: [images]
+      summary: List generated images
+      description: Returns image metadata records ordered newest-first.
+      parameters:
+        - $ref: "#/components/parameters/AnonymousOwnerIdHeader"
+      responses:
+        "200":
+          description: Generated images list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListGeneratedImagesResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /images/{imageId}/content:
+    get:
+      operationId: getGeneratedImageContent
+      tags: [images]
+      summary: Get generated image content
+      parameters:
+        - $ref: "#/components/parameters/AnonymousOwnerIdHeader"
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image binary content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
 components:
+  parameters:
+    AnonymousOwnerIdHeader:
+      name: x-anonymous-owner-id
+      in: header
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -201,3 +358,88 @@ components:
             $ref: "#/components/schemas/ChatHistoryItem"
       required:
         - sessions
+
+    CreateImageGenerationRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+        - prompt
+
+    GeneratedImageRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        enhancedPrompt:
+          type: string
+        providerRevisedPrompt:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        routingReason:
+          type: string
+        mimeType:
+          type: string
+        byteSize:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        contentUrl:
+          type: string
+          format: uri
+      required:
+        - id
+        - prompt
+        - enhancedPrompt
+        - providerRevisedPrompt
+        - provider
+        - model
+        - routingReason
+        - mimeType
+        - byteSize
+        - status
+        - createdAt
+        - contentUrl
+
+    ListGeneratedImagesResponse:
+      type: object
+      description: Newest-first generated image metadata records.
+      properties:
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedImageRecord"
+      required:
+        - images
+
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+      required:
+        - type
+        - title
+        - status
+        - detail

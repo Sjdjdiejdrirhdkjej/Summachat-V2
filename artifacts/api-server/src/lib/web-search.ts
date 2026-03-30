@@ -6,8 +6,17 @@ export type SearchResult = {
   text: string;
 };
 
+let _exaClient: Exa | null = null;
+
+function getExaClient(): Exa {
+  if (!_exaClient) {
+    _exaClient = new Exa(process.env["EXA_API_KEY"]);
+  }
+  return _exaClient;
+}
+
 export async function searchWeb(query: string): Promise<SearchResult[]> {
-  const exa = new Exa(process.env.EXA_API_KEY);
+  const exa = getExaClient();
   const result = await exa.searchAndContents(query, {
     type: "auto",
     numResults: 5,

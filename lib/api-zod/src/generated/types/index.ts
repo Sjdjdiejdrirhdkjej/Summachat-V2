@@ -6,4 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./anonymousOwnerIdHeaderParameter";
+export * from "./chatHistoryItem";
+export * from "./chatHistoryResponse";
+export * from "./chatQueryRequest";
+export * from "./chatQueryResponse";
+export * from "./chatSession";
+export * from "./chatSessionSummaryStatus";
+export * from "./createImageGenerationRequest";
+export * from "./generatedImageRecord";
 export * from "./healthStatus";
+export * from "./listGeneratedImagesResponse";
+export * from "./modelId";
+export * from "./modelResponse";
+export * from "./modelResponseStatus";
+export * from "./problem";

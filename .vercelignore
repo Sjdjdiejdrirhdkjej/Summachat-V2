@@ -1,0 +1,47 @@
+# Dependencies (installed during build)
+node_modules
+
+# Caches and stores
+.cache
+.local
+.pythonlibs
+.config
+
+# Dev tooling / IDE config
+.git
+.claude
+.cursor
+.codemachine
+.sisyphus
+.vscode
+.idea
+
+# Replit-specific
+.replit
+.replitignore
+*.toml
+
+# Python
+*.pyc
+__pycache__
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Lockfiles not needed for deployment
+bun.lock
+
+# Mockup sandbox (not deployed)
+artifacts/mockup-sandbox
+
+# Source maps
+*.map
+
+# Dev-only files
+*.md
+.npmrc
+.aider*
+.env*.local
+
+# Data / artifacts generated at runtime
+artifacts/api-server/.data

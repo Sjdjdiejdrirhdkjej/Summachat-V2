@@ -47,3 +47,10 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+.aider*
+.vercel
+.env*.local
+
+# pnpm (no longer used)
+pnpm-lock.yaml
+pnpm-workspace.yaml

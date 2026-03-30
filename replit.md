@@ -2,13 +2,13 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+npm/bun workspace monorepo using TypeScript. Each package manages its own dependencies.
 
 ## Stack
 
-- **Monorepo tool**: pnpm workspaces
+- **Monorepo tool**: npm workspaces
 - **Node.js version**: 24
-- **Package manager**: pnpm
+- **Package manager**: npm or bun (both supported)
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
 - **Database**: PostgreSQL + Drizzle ORM
@@ -18,7 +18,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ## Application: Multi-Model Chat
 
-Users select 2+ AI models, submit a prompt, and all selected models are called simultaneously. Once all models respond, a summarizer (GPT 5.4 High / gpt-5.2) synthesises the results.
+Users select 2+ AI models, submit a prompt, and all selected models are called simultaneously. Once all models respond, a Claude Opus 4.6 moderator picks the strongest candidate with a short note, and a Claude Opus 4.6 summarizer synthesises the final answer using both the raw model outputs and the moderator review.
 
 ### Models available
 - **GPT 5.4 High** (`gpt-5.2`) — OpenAI via Replit AI Integrations
@@ -36,7 +36,12 @@ Events emitted over the stream:
 - `{ type: "model_chunk", model, content }` — incremental text from a model
 - `{ type: "model_done", model }` — model finished
 - `{ type: "model_error", model, error }` — model failed
+- `{ type: "moderator_start" }` — moderator has started
+- `{ type: "moderator_chunk", content }` — incremental text from moderator
+- `{ type: "moderator_done", choice, note }` — moderator finished with selected model and note
+- `{ type: "moderator_error", error }` — moderator failed
 - `{ type: "summary_start" }` — summarizer has started
+- `{ type: "summary_thinking_chunk", content }` — incremental reasoning text emitted inside `<thinking>` tags
 - `{ type: "summary_chunk", content }` — incremental text from summarizer
 - `{ type: "summary_done" }` — summarizer finished
 - `{ type: "done" }` — entire request complete
@@ -57,7 +62,6 @@ artifacts-monorepo/
 │   ├── integrations-anthropic-ai/       # Anthropic SDK client + utilities
 │   └── integrations-gemini-ai/          # Google Gemini SDK client + utilities
 ├── scripts/                # Utility scripts
-├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 ├── tsconfig.json
 └── package.json
@@ -67,14 +71,14 @@ artifacts-monorepo/
 
 Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
+- **Always typecheck from the root** — run `npm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
 - **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
 - **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
 
 ## Root Scripts
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+- `npm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
+- `npm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
 ## Packages
 
@@ -84,8 +88,15 @@ Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` 
 
 - Entry: `src/index.ts` — reads `PORT`, starts Express
 - App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health`; `src/routes/multi-chat.ts` exposes `POST /multi-chat`
+- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /api/healthz`, `HEAD /api/healthz`, `GET /api/readyz`, and `HEAD /api/readyz`; `src/routes/multi-chat.ts` exposes `POST /api/multi-chat`
 - Depends on: `@workspace/db`, `@workspace/api-zod`, `@workspace/integrations-openai-ai-server`, `@workspace/integrations-anthropic-ai`, `@workspace/integrations-gemini-ai`
+
+### Replit deployment
+
+- **Build** (see `.replit` `[deployment]`): runs `npm run typecheck`, then `npm run -w @workspace/chat-ui build`, then `npm run -w @workspace/api-server build`. This matches the repo’s expectation that OpenAPI-generated clients and types are committed; the typecheck step catches drift before producing bundles.
+- **Run**: `node --enable-source-maps artifacts/api-server/dist/index.mjs` (default `PORT` is 8080 in code when unset).
+- **Health**: Replit’s deployment probe uses `GET /api/healthz` (JSON `{"status":"ok"}`).
+- **Secrets**: configure third-party API keys (for example web search) in Replit **Secrets**, not in committed config files.
 
 ### `lib/db` (`@workspace/db`)
 

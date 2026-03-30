@@ -1,59 +1,26 @@
 {
-  "active_plan": "/home/runner/workspace/.sisyphus/plans/ai-provider-replit-chat.md",
-  "started_at": "2026-03-26T22:56:55.065Z",
+  "active_plan": "/home/runner/workspace/.sisyphus/plans/ai-image-generator.md",
+  "started_at": "2026-03-27T13:08:21.102Z",
   "session_ids": [
-    "ses_2d3a28ebaffePer6xUYlvtU5X9",
-    "ses_2d381a861ffeAmk4l43YFZ4h5A",
-    "ses_2d381a96fffekJmnzVoVWvSKHg",
-    "ses_2d381a85effeULSznqF4cx8br5",
-    "ses_2d37774c5ffekxSCxMEPQow5Mm",
-    "ses_2d37774c0ffekLCXxEGZ9cQemL",
-    "ses_2d3741371ffefIfaNzEmFktKAX",
-    "ses_2d3704d27ffegtqYnx6PplebNw",
-    "ses_2d36ab64affe8SeCPmxxG0tocn",
-    "ses_2d3650da2ffeY34yBE6dKrDNjZ",
-    "ses_2d35e66b7ffe42VP7pOcw33jZd",
-    "ses_2d35e664affeBDl90XmuosudQI",
-    "ses_2d33399d3ffeaFnnn4hnaXRg35"
+    "ses_2d0b62d72ffegh4inH6398rsod",
+    "ses_2d08ba308ffehBdIwTplYQNorM",
+    "ses_2d05f51a9ffeElN4xFWCrWunxc",
+    "ses_2d05e4678ffeeGHATUkvB1W9Oz",
+    "ses_2d05e7ab2ffebDQG66skQrLfXc",
+    "ses_2d05dc52dffeNRPhd03FuT4lTq",
+    "ses_2d05d7911ffesSKAWgy5KEGv0v"
   ],
-  "plan_name": "ai-provider-replit-chat",
+  "plan_name": "ai-image-generator",
   "agent": "atlas",
   "task_sessions": {
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "Correct Gemini streaming to match the actual SDK contract",
-      "session_id": "ses_2d3741371ffefIfaNzEmFktKAX",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-03-26T23:48:59.360Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "Harden `/api/chat` so single-provider requests always end visibly",
-      "session_id": "ses_2d3704d27ffegtqYnx6PplebNw",
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Define the image API contract and regenerate schemas",
+      "session_id": "ses_2d05e7ab2ffebDQG66skQrLfXc",
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
-      "updated_at": "2026-03-26T23:56:15.227Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "Rework `/api/multi-chat` to tolerate stalled providers and finish deterministically",
-      "session_id": "ses_2d36ab64affe8SeCPmxxG0tocn",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-03-27T00:02:27.664Z"
-    },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "Update the chat UI to surface terminal SSE states and degraded results clearly",
-      "session_id": "ses_2d3650da2ffeY34yBE6dKrDNjZ",
-      "agent": "Sisyphus-Junior",
-      "category": "visual-engineering",
-      "updated_at": "2026-03-27T00:10:07.820Z"
+      "updated_at": "2026-03-27T14:14:17.117Z"
     }
   }
 }

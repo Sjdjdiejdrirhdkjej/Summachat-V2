@@ -1,6 +1,10 @@
 const STORAGE_KEY = "summachat_fp";
 
 function collectBrowserProperties(): string {
+  const deviceMemoryValue = Reflect.get(navigator, "deviceMemory");
+  const deviceMemory =
+    typeof deviceMemoryValue === "number" ? deviceMemoryValue : "";
+
   const props = [
     navigator.userAgent,
     navigator.language,
@@ -11,7 +15,7 @@ function collectBrowserProperties(): string {
     String(screen.pixelDepth),
     String(new Date().getTimezoneOffset()),
     String(navigator.hardwareConcurrency ?? ""),
-    String((navigator as any).deviceMemory ?? ""),
+    String(deviceMemory),
     Intl.DateTimeFormat().resolvedOptions().timeZone,
   ];
   return props.join("|");
@@ -30,7 +34,7 @@ async function sha256Short(str: string): Promise<string> {
   try {
     const buf = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(str)
+      new TextEncoder().encode(str),
     );
     return Array.from(new Uint8Array(buf))
       .slice(0, 8)

@@ -8,3 +8,113 @@
 export interface HealthStatus {
   status: string;
 }
+
+export type ModelId = (typeof ModelId)[keyof typeof ModelId];
+
+export const ModelId = {
+  "gpt-52": "gpt-5.2",
+  "claude-opus-4-6": "claude-opus-4-6",
+  "gemini-31-pro-preview": "gemini-3.1-pro-preview",
+} as const;
+
+export interface ChatQueryRequest {
+  /** @minLength 1 */
+  prompt: string;
+  /** @minItems 2 */
+  models: ModelId[];
+}
+
+export interface ChatQueryResponse {
+  sessionId: string;
+  prompt: string;
+  models: ModelId[];
+}
+
+export type ModelResponseStatus =
+  (typeof ModelResponseStatus)[keyof typeof ModelResponseStatus];
+
+export const ModelResponseStatus = {
+  pending: "pending",
+  streaming: "streaming",
+  complete: "complete",
+  error: "error",
+} as const;
+
+export interface ModelResponse {
+  modelId: ModelId;
+  content: string;
+  status: ModelResponseStatus;
+  error?: string;
+}
+
+export type ChatSessionSummaryStatus =
+  (typeof ChatSessionSummaryStatus)[keyof typeof ChatSessionSummaryStatus];
+
+export const ChatSessionSummaryStatus = {
+  pending: "pending",
+  streaming: "streaming",
+  complete: "complete",
+  error: "error",
+} as const;
+
+export interface ChatSession {
+  id: string;
+  prompt: string;
+  models: ModelId[];
+  responses: ModelResponse[];
+  summary?: string;
+  summaryStatus: ChatSessionSummaryStatus;
+  createdAt?: string;
+}
+
+export interface ChatHistoryItem {
+  id: string;
+  prompt: string;
+  models: ModelId[];
+  createdAt?: string;
+}
+
+export interface ChatHistoryResponse {
+  sessions: ChatHistoryItem[];
+}
+
+export interface CreateImageGenerationRequest {
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  prompt: string;
+}
+
+export interface GeneratedImageRecord {
+  id: string;
+  prompt: string;
+  enhancedPrompt: string;
+  providerRevisedPrompt: string;
+  provider: string;
+  model: string;
+  routingReason: string;
+  mimeType: string;
+  /** @minimum 0 */
+  byteSize: number;
+  status: string;
+  createdAt: string;
+  contentUrl: string;
+}
+
+/**
+ * Newest-first generated image metadata records.
+ */
+export interface ListGeneratedImagesResponse {
+  images: GeneratedImageRecord[];
+}
+
+export interface Problem {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance?: string;
+}
+
+export type AnonymousOwnerIdHeaderParameter = string;

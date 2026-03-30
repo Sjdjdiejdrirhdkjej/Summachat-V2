@@ -9,8 +9,13 @@ import {
 } from "../lib/web-search.js";
 import {
   runGuardedProviderStream,
+  toTerminalError,
   type GuardedProviderStreamResult,
 } from "../lib/provider-stream-guard.js";
+import { createGeneratedImage } from "../lib/image-generation/create-generated-image.js";
+import { routeImagePrompt } from "../lib/image-generation/route-image-prompt.js";
+import { getOrCreateAnonymousOwnerId } from "../lib/anonymous-owner.js";
+import { createThinkingTagParser } from "../lib/thinking-tag-parser.js";
 import { z } from "zod";
 
 const router = Router();
@@ -22,6 +27,12 @@ const MODELS = {
 } as const;
 
 type ModelId = keyof typeof MODELS;
+type ResponseCandidate = { model: ModelId; label: string; response: string };
+type ModeratorReview = {
+  rawOutput: string;
+  choice?: ModelId;
+  note?: string;
+};
 
 type StreamRequestContext = {
   requestId?: string;
@@ -52,6 +63,7 @@ const MultiChatSchema = z.object({
       message: "Models must be unique",
     }),
   webSearch: z.boolean().optional().default(false),
+  mode: z.enum(["chat", "image"]).optional().default("chat"),
   history: z
     .array(
       z.object({
@@ -70,7 +82,8 @@ async function callGPT(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
-  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [];
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] =
+    [];
   if (webContext) messages.push({ role: "system", content: webContext });
   for (const msg of history) {
     messages.push({ role: msg.role, content: msg.content });
@@ -109,7 +122,10 @@ async function callClaude(
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
   const claudeMessages = [
-    ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    ...history.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
     { role: "user" as const, content: prompt },
   ];
   return runGuardedProviderStream({
@@ -166,130 +182,358 @@ async function callGemini(
   }
   contents.push({ role: "user", parts: [{ text: prompt }] });
 
-  const provider = "gemini:gemini-3.1-pro-preview";
-  const startAt = Date.now();
-  let firstChunkAt: number | null = null;
-  let output = "";
-
-  const abortController = new AbortController();
-
-  const onExternalAbort = () => abortController.abort("external_abort");
-  if (context.signal.aborted) {
-    abortController.abort("external_abort");
-  } else {
-    context.signal.addEventListener("abort", onExternalAbort, { once: true });
-  }
-
-  const overallTimer = setTimeout(
-    () => abortController.abort("overall_timeout"),
-    GEMINI_OVERALL_TIMEOUT_MS,
-  );
-  const firstChunkTimer = setTimeout(
-    () => abortController.abort("first_chunk_timeout"),
-    GEMINI_FIRST_CHUNK_TIMEOUT_MS,
-  );
-
-  context.logger.info(
-    { requestId: context.requestId, provider, overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS, firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS },
-    "provider_stream_started",
-  );
-
-  try {
-    const sdkStream = await ai.models.generateContentStream({
-      model: "gemini-3.1-pro-preview",
-      contents,
-      config: {
-        maxOutputTokens: 8192,
-        abortSignal: abortController.signal,
-      },
-    });
-
-    for await (const chunk of sdkStream) {
-      if (abortController.signal.aborted) break;
-      const text = chunk.text;
-      if (!text) continue;
-
-      if (firstChunkAt === null) {
-        firstChunkAt = Date.now();
-        clearTimeout(firstChunkTimer);
-        context.logger.info(
-          { requestId: context.requestId, provider, firstChunkMs: firstChunkAt - startAt },
-          "provider_stream_first_chunk",
-        );
-      }
-
-      output += text;
-      onChunk(text);
-    }
-
-    const totalMs = Date.now() - startAt;
-
-    if (abortController.signal.aborted) {
-      const reason = abortController.signal.reason as string;
-      const status =
-        reason === "overall_timeout" || reason === "first_chunk_timeout"
-          ? "timed_out"
-          : "aborted";
-      context.logger.warn(
-        { requestId: context.requestId, provider, status, reason, totalMs },
-        status === "timed_out" ? "provider_stream_timed_out" : "provider_stream_aborted",
-      );
-      return { status, output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs };
-    }
-
-    if (output.length === 0) {
-      context.logger.warn({ requestId: context.requestId, provider, totalMs }, "provider_stream_empty_output");
-      return { status: "empty", output, firstChunkMs: null, totalMs };
-    }
-
-    context.logger.info(
-      { requestId: context.requestId, provider, totalMs, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, outputLength: output.length },
-      "provider_stream_completed",
-    );
-    return { status: "success", output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs };
-  } catch (error) {
-    const totalMs = Date.now() - startAt;
-    const normalizedError = error instanceof Error ? error : new Error("Unknown Gemini stream error");
-
-    if (abortController.signal.aborted) {
-      const reason = abortController.signal.reason as string;
-      const status =
-        reason === "overall_timeout" || reason === "first_chunk_timeout"
-          ? "timed_out"
-          : "aborted";
-      context.logger.warn(
-        { requestId: context.requestId, provider, status, reason, totalMs, err: normalizedError },
-        status === "timed_out" ? "provider_stream_timed_out" : "provider_stream_aborted",
-      );
-      return { status, output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs, error: normalizedError };
-    }
-
-    context.logger.error(
-      { requestId: context.requestId, provider, totalMs, err: normalizedError },
-      "provider_stream_errored",
-    );
-    return { status: "errored", output, firstChunkMs: firstChunkAt === null ? null : firstChunkAt - startAt, totalMs, error: normalizedError };
-  } finally {
-    clearTimeout(overallTimer);
-    clearTimeout(firstChunkTimer);
-    context.signal.removeEventListener("abort", onExternalAbort);
-  }
+  return runGuardedProviderStream({
+    provider: "gemini:gemini-3.1-pro-preview",
+    requestId: context.requestId,
+    logger: context.logger,
+    overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS,
+    firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS,
+    externalAbortSignal: context.signal,
+    startStream: async ({ signal }) => {
+      const stream = (await ai.models.generateContentStream({
+        model: "gemini-3.1-pro-preview",
+        contents,
+        config: { maxOutputTokens: 8192, abortSignal: signal },
+      })) as AsyncIterable<{ text: string }>;
+      return { stream };
+    },
+    getChunkText: (chunk) => chunk.text,
+    onChunk,
+  });
 }
 
-function partialTagOverlap(text: string, tag: string): number {
-  const maxCheck = Math.min(text.length, tag.length - 1);
-  for (let len = maxCheck; len >= 1; len--) {
-    if (text.endsWith(tag.slice(0, len))) {
-      return len;
-    }
-  }
-  return 0;
+// Image mode: prompts for improving image generation prompts
+const IMAGE_MODE_MODEL_SYSTEM_PROMPT = `You are an elite AI image prompt architect with deep expertise in Midjourney, DALL-E 3, Stable Diffusion, and other leading image generators. Your mission is to transform any user request into a production-grade prompt that will yield a stunning, professional-quality image.
+
+## Your Core Task
+Analyze the user's request, then craft a comprehensive prompt that leaves NO ambiguity about the desired output. Think like a professional art director briefing a team—every detail matters.
+
+## COMPREHENSIVE PROMPT STRUCTURE
+
+### 1. SUBJECT DEFINITION (Primary Focus)
+The subject is the core of your prompt. Be EXHAUSTIVE:
+- Exact species/breed/type (e.g., "Siberian husky" not just "dog")
+- Physical details: age, gender, body type, fur/skin texture, distinctive markings
+- Pose: standing, sitting, running, mid-air, interaction with objects
+- Expression: specific emotion (not just "happy"), eye direction, facial muscle tension
+- Clothing/accessories if applicable: style, material, fit, colors
+- Count: "a group of 5 people", "three kittens", "a flock of birds"
+
+### 2. COMPOSITION & FRAMING
+- Camera POV: eye-level, high angle (bird's eye), low angle (worm's eye), dutch angle, over-the-shoulder
+- Shot type: extreme close-up, close-up, medium close-up, medium shot, medium wide, wide shot, extreme wide
+- Depth: foreground/midground/background clarity, shallow DOF (f/1.4), deep DOF (f/16), tilt-shift effect
+- Rule of thirds, centered, diagonal, golden ratio composition
+- Headroom/lead room considerations
+- Negative space usage
+
+### 3. LIGHTING (Critical for Quality)
+Specify EVERY lighting element:
+- Source type: golden hour sun, blue hour ambient, studio strobes, ring light, window light, neon signs, firelight, moonlight
+- Direction: front-lit, side-lit (left/right), backlit, rim light, under-lighting
+- Quality: hard light (sharp shadows), soft light (gentle shadows), diffused, bouncing
+- Mood: dramatic shadows, high key (bright), low key (dark/moody), chiaroscuro
+- Color temperature: warm (2700K), cool (6500K), mixed
+- Atmospheric: lens flare, god rays, volumetric fog, dust motes, steam
+
+### 4. ENVIRONMENT & BACKGROUND
+- Location type: indoor/outdoor, specific setting (forest, studio, kitchen, cyberpunk street)
+- Time of day: dawn, morning, noon, afternoon, golden hour, blue hour, night
+- Weather: clear, overcast, rain, fog, snow, thunderstorm
+- Background elements: cityscape, bokeh lights, blurred trees, gradient backdrop
+- Depth and distance elements
+
+### 5. COLOR & PALETTE
+- Dominant colors: "dominant deep teal with coral accents"
+- Color harmony: complementary, analogous, triadic, split-complementary
+- Saturation: vibrant, muted, desaturated, high contrast
+- Tonal range: bright/high-key, dark/low-key, full tonal range
+- Color temperature: warm, cool, neutral
+
+### 6. ART MEDIUM & STYLE
+Choose ONE primary medium, then add style modifiers:
+- Photography: portrait, landscape, street, fashion, documentary, cinematic, editorial
+- Digital art: digital painting, concept art, matte painting, character design
+- Traditional: oil painting, watercolor, charcoal sketch, pencil drawing
+- Illustration: flat vector, isometric, children's book, manga, anime
+- 3D: Blender render, Unreal Engine 5, octane render, toon shader
+- Specific styles: cyberpunk, steampunk, solarpunk, noir, art deco, brutalist, minimalist
+
+### 7. TEXT/TYPOGRAPHY (If Applicable)
+- Font style: serif, sans-serif, display, handwritten, script
+- Text content: exact words
+- Placement: centered, bottom third, diagonal
+- Effects: embossed, neon, metallic, painted
+
+### 8. TECHNICAL QUALITY TAGS
+Add these to ensure best results:
+- Resolution: 8k, 4k, ultra high resolution
+- Quality: masterpiece, best quality, ultra detailed, extremely detailed
+- Rendering: ray tracing, octane render, cycles render, unreal engine 5
+- Style modifiers: trending on artstation, concept art, detailed illustration
+- Negative quality: low quality, worst quality, blurry, jpeg artifacts (to avoid)
+
+### 9. ASPECT RATIO
+- Portrait (9:16) - for social media, phone
+- Landscape (16:9) - for cinematic
+- Square (1:1) - for Instagram
+- Ultra-wide (21:9) - panoramic
+- Golden ratio (1.618:1)
+
+### 10. FINISHING TOUCHES
+- Post-processing: color grading, vignette, film grain, noise reduction
+- Effects: bokeh, motion blur, freeze frame, tilt-shift
+- Camera details: lens type (85mm portrait, 24mm wide), aperture, ISO
+
+## EXAMPLES OF TRANSFORMATION
+
+Example 1:
+User: "A sunset"
+Output: "Panoramic landscape of golden hour sunset over ocean, waves crashing on rocky coastline, warm amber and coral sky with wispy cirrus clouds catching last light, silhouette of seagulls in flight, long exposure silky water, dramatic rim lighting on cliff edges, rich earth tones in foreground rocks, cinematic 16:9 aspect ratio, film grain, color graded orange-teal, masterpiece, best quality, 8k, unreal engine 5 render"
+
+Example 2:
+User: "A person working"
+Output: "Medium shot of diverse young woman in her late 20s working at standing desk in modern minimalist home office, warm natural window light from left, wearing fitted navy blue sweater and gold hoop earrings, focused expression looking at monitor, motion blur on hands typing, shallow depth of field with blurred ergonomic keyboard and plant in background, clean white walls with abstract art, morning light atmosphere, soft cinematic color grading, Canon 85mm f/1.4, professional photography, detailed, 4k, masterpiece"
+
+Example 3:
+User: "A robot"
+Output: "Full-body humanoid robot companion, sleek matte white titanium alloy chassis with teal accent lighting along joints, warm amber LED eyes expressing curiosity, retro-futuristic design inspired by 1950s sci-fi, standing in abandoned warehouse with dusty golden light beams through broken skylights, rust and wear on exposed joints, industrial environment with overgrown vines, cinematic low-angle shot, dramatic chiaroscuro lighting, film grain, color graded desaturated with teal shadows, Blender 3D render, octane, concept art, trending on artstation, 8k, ultra detailed"
+
+## STRICT OUTPUT RULES
+- Write ONLY the improved prompt - no explanations, no markdown, no quotes, no commentary
+- Use COMMAS to separate concepts, not periods
+- Write in clear, descriptive English
+- 100-400 words of substance (not counting quality tags)
+- The prompt must work WITHOUT the original request
+- NEVER use vague words: "beautiful", "nice", "pretty", "cool", "good", "cute"
+- Instead of "beautiful" say: "ethereal", "stunning", "striking", "elegant"
+- Instead of "cute" say: "playful", "charming", "endearing", "whimsical"
+
+Now transform the user's request into a professional-grade image prompt.`;
+
+const IMAGE_MODE_MODERATOR_SYSTEM_PROMPT = `You are an elite image prompt curator with deep expertise in AI image generation across Midjourney, DALL-E 3, Stable Diffusion, and similar systems. You have a proven eye for what separates good prompts from exceptional ones that produce stunning, professional-quality images.
+
+## Your Critical Task
+You will receive 3 improved prompts from different AI models. Your job is to evaluate each rigorously and select the ONE that will most likely produce a high-quality, coherent, visually striking image.
+
+## EVALUATION FRAMEWORK (Score each prompt 1-10)
+
+### A. SUBJECT CLARITY (20 points)
+- Is the subject defined with SPECIFIC, unambiguous details?
+- Are physical characteristics precise? (breed, color, age, material, texture)
+- Is the count/quantity clear? (one vs multiple vs group)
+- Could a stranger generate this exact subject based on the prompt?
+
+### B. COMPOSITION & FRAMING (15 points)
+- Does it specify camera angle and perspective?
+- Is shot type defined (close-up, wide, etc.)?
+- Is depth of field mentioned?
+- Is the visual hierarchy clear?
+
+### C. LIGHTING EXPLICITNESS (20 points)
+- Is light source explicitly stated?
+- Are direction and quality of light defined?
+- Are atmospheric effects specified?
+- Does lighting support the mood/intent?
+
+### D. STYLE COHERNECE (15 points)
+- Is art medium clearly defined?
+- Are style modifiers consistent and appropriate?
+- Does the prompt have a unified visual vision?
+
+### E. TECHNICAL COMPLETENESS (15 points)
+- Are quality tags present and appropriate?
+- Is aspect ratio specified if important?
+- Are render/execution details included?
+
+### F. PRODUCTION READINESS (15 points)
+- Would this prompt work standalone without the original request?
+- Are there vague/adjective-heavy sections that could confuse the generator?
+- Is the prompt 100-300 words of meaningful substance?
+
+## YOUR PROCESS
+1. Read through all 3 prompts carefully
+2. Score each against the framework above
+3. Identify the winner (there MUST be a clear winner)
+4. Note the specific reasons why the winner excels
+
+## OUTPUT FORMAT (STRICT)
+Your entire response must be exactly:
+"Response X is the best. Side note: [1-2 sentences on what makes this prompt superior—specific details, not generic praise]"
+
+Where X is 1, 2, or 3.
+
+Example: "Response 2 is the best. Side note: It uniquely specifies golden hour warm backlighting and includes realistic fabric texture details that the other prompts omit."
+
+If prompts are truly equal (extremely rare), pick one anyway—decisiveness is required.`;
+
+const IMAGE_MODE_SUMMARIZER_SYSTEM_PROMPT = `You are a master image prompt architect with 10+ years of experience in visual design, AI art generation, and prompt engineering. You've seen thousands of prompts and know exactly what makes one succeed or fail.
+
+## Your Mission
+Take 3 different AI-improved prompts and synthesize them into ONE perfect, production-ready prompt that is GREATER than the sum of its parts. The final prompt should be so good that you'd bet on it producing a stunning image.
+
+## SYNTHESIS METHODOLOGY
+
+### Phase 1: Deep Analysis (in your <thinking>)
+Read each prompt multiple times. For each, identify:
+- **Unique wins**: Details ONLY this prompt has that are valuable
+- **Missing elements**: What this prompt lacks that others have
+- **Strongest sections**: The best-written parts
+- **Weakest sections**: Vague areas, contradictions, or gaps
+
+### Phase 2: Strategic Combination
+Pick and choose the BEST elements from EACH prompt:
+- From Prompt 1: Subject definition + specific physical details
+- From Prompt 2: Lighting description + atmospheric quality
+- From Prompt 3: Style execution + technical specifications
+
+Merge them into a COHERENT vision—not a Frankenstein mess.
+
+### Phase 3: Hardening (Critical)
+Review your combined draft:
+- Fill gaps: If no prompt specified camera angle, add one
+- Strengthen lighting: Make it more specific and intentional
+- Clarify subject: Ensure no ambiguity remains
+- Polish flow: Use commas to connect ideas naturally
+- Add missing basics: Aspect ratio, quality tags if absent
+
+### Phase 4: Quality Verification
+Before outputting, check:
+- [ ] Subject is specific and unambiguous
+- [ ] Lighting is fully specified (source, direction, mood)
+- [ ] Composition/framing is clear
+- [ ] Art medium and style are defined
+- [ ] Technical quality tags are present
+- [ ] Prompt works standalone (no "as shown" references)
+- [ ] No vague words remain
+- [ ] Length is 150-350 words of substance
+
+## YOUR THINKING PROCESS
+Inside <thinking> tags, show your work:
+1. What did you take from each prompt and why?
+2. What did you add or improve?
+3. How does this final version exceed any individual prompt?
+
+## FINAL OUTPUT
+After your thinking, output ONLY the polished prompt:
+- No markdown formatting
+- No quotes around the prompt
+- Just pure, production-ready prompt text
+- 150-350 words of meaningful substance
+- Quality tags included at the end
+
+Format:
+<thinking>
+Your detailed synthesis reasoning here—be thorough, show your expertise
+</thinking>
+Your final polished prompt here, ready for image generation`;
+
+async function callClaudeTask(
+  provider: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+  firstChunkTimeoutMs = PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
+): Promise<GuardedProviderStreamResult> {
+  return runGuardedProviderStream({
+    provider,
+    requestId: context.requestId,
+    logger: context.logger,
+    overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
+    firstChunkTimeoutMs,
+    externalAbortSignal: context.signal,
+    startStream: async () => {
+      const stream = anthropic.messages.stream({
+        model: "claude-opus-4-6",
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      return { stream, abort: () => stream.abort() };
+    },
+    getChunkText: (event) => {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        return event.delta.text;
+      }
+      return null;
+    },
+    onChunk,
+  });
+}
+
+async function callModerator(
+  history: ChatMessage[],
+  prompt: string,
+  responses: ResponseCandidate[],
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult & ModeratorReview> {
+  const responseBlock = responses
+    .map((r, index) => `Response ${index + 1} (${r.label}):\n${r.response}`)
+    .join("\n\n---\n\n");
+
+  const systemPrompt = `You are a moderator. Your task is to review the responses and select the best one, providing a brief side note about your choice.
+
+You will be given a user's question and several responses to it.
+
+Review each response considering:
+- Directness: Does the response directly answer the user's question without unnecessary preamble or tangents?
+- Accuracy and correctness
+- Completeness
+- Clarity and helpfulness
+- Any unique insights or value
+
+Prioritize the response that most directly and concisely answers what the user actually asked.
+
+After your review, output ONLY in this exact format:
+"Response X is the best. Side note: [Your brief note about why you chose this response]"
+
+Where X is the response number (1, 2, 3, etc.). Be concise but specific in your side note - explain the key reason for your choice in 1-2 sentences.`;
+
+  const historyBlock =
+    history.length > 0
+      ? `Conversation so far:\n${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")}\n\n`
+      : "";
+  const userMessage = `${historyBlock}User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nSelect the best response and provide your note.`;
+
+  let bufferedOutput = "";
+
+  const processChunk = (text: string) => {
+    bufferedOutput += text;
+    onChunk(text);
+  };
+
+  const result = await callClaudeTask(
+    "anthropic:claude-opus-4-6-moderator",
+    systemPrompt,
+    userMessage,
+    1024,
+    processChunk,
+    context,
+  );
+
+  const output = bufferedOutput.trim();
+  const choiceMatch = output.match(/^Response (\d+) is the best\./i);
+  const sideNoteMatch = output.match(/Side note:\s*([\s\S]*)$/i);
+
+  const choice = choiceMatch
+    ? responses[parseInt(choiceMatch[1]) - 1]?.model
+    : undefined;
+  const note = sideNoteMatch?.[1]?.trim();
+
+  return { ...result, rawOutput: output, choice, note };
 }
 
 async function callSummarizer(
   history: ChatMessage[],
   prompt: string,
-  responses: { model: ModelId; label: string; response: string }[],
+  responses: ResponseCandidate[],
+  moderatorReview: ModeratorReview | null,
   onChunk: (text: string) => void,
   onThinkingChunk: (text: string) => void,
   context: StreamRequestContext,
@@ -297,82 +541,67 @@ async function callSummarizer(
   const responseBlock = responses
     .map((r) => `### ${r.label}\n${r.response}`)
     .join("\n\n");
+  const moderatorBlock = moderatorReview
+    ? `Moderator review:\n${moderatorReview.rawOutput || "No moderator output."}\n\nParsed choice: ${moderatorReview.choice ? MODELS[moderatorReview.choice] : "Unavailable"}\nParsed note: ${moderatorReview.note ?? "Unavailable"}`
+    : "Moderator review:\nUnavailable.";
 
   const systemPrompt = `You are a summariser. You will be given a user's question and several responses to it.
 
-Before writing your summary, reason through the responses inside <thinking>...</thinking> tags. In your thinking, consider:
+Before writing your answer, reason through the responses inside <thinking>...</thinking> tags. In your thinking, consider:
+- What the user is actually asking for
 - What unique insights each response offers
 - Where the responses agree and disagree
 - Which points are most accurate and helpful
-- How to best synthesize the information into a coherent answer
+- How to directly answer the user's question using the best information
 
-After closing the </thinking> tag, write a single, clear, concise summary that combines the best insights from all responses. Do not mention any AI models, agents, or sources — just summarise the content as if it were your own unified answer.`;
-  const historyBlock = history.length > 0
-    ? `Conversation so far:\n${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")}\n\n`
-    : "";
-  const userMessage = `${historyBlock}User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\nReason through the responses in <thinking> tags, then summarise.`;
+Use the moderator's review as a strong signal, but not as ground truth. Verify it against the responses yourself and keep the best accurate details even if they came from a response the moderator did not pick.
 
-  const OPEN_TAG = "<thinking>";
-  const CLOSE_TAG = "</thinking>";
-  let insideThinking = false;
-  let tagBuffer = "";
+After closing the </thinking> tag, write a direct answer to the user's question. Lead with the answer itself — do not start with background context, disclaimers, or meta-commentary about the responses. Combine the best insights from all responses into a single, clear, and helpful reply. Do not mention any AI models, agents, or sources — just answer as if you are responding to the user yourself.`;
+  const historyBlock =
+    history.length > 0
+      ? `Conversation so far:\n${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")}\n\n`
+      : "";
+  const userMessage = `${historyBlock}User's question:\n"${prompt}"\n\nResponses:\n\n${responseBlock}\n\n${moderatorBlock}\n\nReason through the responses in <thinking> tags, then summarise.`;
 
-  const processText = (text: string) => {
-    tagBuffer += text;
+  const thinkingParser = createThinkingTagParser(onChunk, onThinkingChunk);
 
-    while (tagBuffer.length > 0) {
-      if (!insideThinking) {
-        const openIdx = tagBuffer.indexOf(OPEN_TAG);
-        if (openIdx === -1) {
-          const overlap = partialTagOverlap(tagBuffer, OPEN_TAG);
-          const safe = tagBuffer.slice(0, tagBuffer.length - overlap);
-          if (safe) onChunk(safe);
-          tagBuffer = tagBuffer.slice(tagBuffer.length - overlap);
-          break;
-        }
-        if (openIdx > 0) onChunk(tagBuffer.slice(0, openIdx));
-        tagBuffer = tagBuffer.slice(openIdx + OPEN_TAG.length);
-        insideThinking = true;
-      } else {
-        const closeIdx = tagBuffer.indexOf(CLOSE_TAG);
-        if (closeIdx === -1) {
-          const overlap = partialTagOverlap(tagBuffer, CLOSE_TAG);
-          const safe = tagBuffer.slice(0, tagBuffer.length - overlap);
-          if (safe) onThinkingChunk(safe);
-          tagBuffer = tagBuffer.slice(tagBuffer.length - overlap);
-          break;
-        }
-        if (closeIdx > 0) onThinkingChunk(tagBuffer.slice(0, closeIdx));
-        tagBuffer = tagBuffer.slice(closeIdx + CLOSE_TAG.length);
-        insideThinking = false;
-      }
-    }
-  };
+  const result = await callClaudeTask(
+    "anthropic:claude-opus-4-6-summary",
+    systemPrompt,
+    userMessage,
+    16384,
+    thinkingParser.processText,
+    context,
+    SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS,
+  );
 
-  const flushBuffer = () => {
-    if (!tagBuffer) return;
-    if (insideThinking) {
-      onThinkingChunk(tagBuffer);
-    } else {
-      onChunk(tagBuffer);
-    }
-    tagBuffer = "";
-  };
+  thinkingParser.flush();
+  return result;
+}
 
-  const result = await runGuardedProviderStream({
-    provider: "openai:gpt-5.2-summary",
+// Image mode: call models with image prompt improvement system prompt
+async function callImageModeModel(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult> {
+  const userMessage = `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}\n\nOutput ONLY your improved prompt - no explanations, no quotes, just the prompt text that will produce an excellent image.`;
+
+  return runGuardedProviderStream({
+    provider: "openai:gpt-5.2-image-mode",
     requestId: context.requestId,
     logger: context.logger,
     overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
-    firstChunkTimeoutMs: SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS,
+    firstChunkTimeoutMs: PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
     externalAbortSignal: context.signal,
     startStream: async ({ signal }) => {
       const stream = await openai.chat.completions.create(
         {
           model: "gpt-5.2",
-          max_completion_tokens: 16384,
+          max_completion_tokens: 2048,
           messages: [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: IMAGE_MODE_MODEL_SYSTEM_PROMPT },
             { role: "user", content: userMessage },
           ],
           stream: true,
@@ -382,27 +611,291 @@ After closing the </thinking> tag, write a single, clear, concise summary that c
       return { stream };
     },
     getChunkText: (chunk) => chunk.choices[0]?.delta?.content,
-    onChunk: processText,
+    onChunk,
   });
+}
 
-  flushBuffer();
+async function callImageModeClaude(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult> {
+  const userMessage = `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}\n\nOutput ONLY your improved prompt - no explanations, no quotes, just the prompt text that will produce an excellent image.`;
+
+  return runGuardedProviderStream({
+    provider: "anthropic:claude-opus-4-6-image-mode",
+    requestId: context.requestId,
+    logger: context.logger,
+    overallTimeoutMs: PROVIDER_OVERALL_TIMEOUT_MS,
+    firstChunkTimeoutMs: PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
+    externalAbortSignal: context.signal,
+    startStream: async () => {
+      const stream = anthropic.messages.stream({
+        model: "claude-opus-4-6",
+        max_tokens: 2048,
+        system: IMAGE_MODE_MODEL_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      return { stream, abort: () => stream.abort() };
+    },
+    getChunkText: (event) => {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        return event.delta.text;
+      }
+      return null;
+    },
+    onChunk,
+  });
+}
+
+async function callImageModeGemini(
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult> {
+  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
+    {
+      role: "user",
+      parts: [{ text: IMAGE_MODE_MODEL_SYSTEM_PROMPT }],
+    },
+    {
+      role: "model",
+      parts: [{ text: "I understand. I'll improve the user's image prompt with detailed, specific instructions for lighting, composition, style, and subject clarity." }],
+    },
+    {
+      role: "user",
+      parts: [{ text: `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}` }],
+    },
+  ];
+
+  return runGuardedProviderStream({
+    provider: "gemini:gemini-3.1-pro-preview-image-mode",
+    requestId: context.requestId,
+    logger: context.logger,
+    overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS,
+    firstChunkTimeoutMs: GEMINI_FIRST_CHUNK_TIMEOUT_MS,
+    externalAbortSignal: context.signal,
+    startStream: async ({ signal }) => {
+      const stream = (await ai.models.generateContentStream({
+        model: "gemini-3.1-pro-preview",
+        contents,
+        config: { maxOutputTokens: 2048, abortSignal: signal },
+      })) as AsyncIterable<{ text: string }>;
+      return { stream };
+    },
+    getChunkText: (chunk) => chunk.text,
+    onChunk,
+  });
+}
+
+// Image mode moderator - selects best prompt
+async function callImageModeModerator(
+  prompt: string,
+  responses: ResponseCandidate[],
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult & ModeratorReview> {
+  const responseBlock = responses
+    .map((r, index) => `Prompt ${index + 1} (${r.label}):\n${r.response}`)
+    .join("\n\n---\n\n");
+
+  const userMessage = `User's original request: "${prompt}"\n\nImproved prompts:\n\n${responseBlock}\n\nSelect the best prompt and provide your note.`;
+
+  let bufferedOutput = "";
+
+  const processChunk = (text: string) => {
+    bufferedOutput += text;
+    onChunk(text);
+  };
+
+  const result = await callClaudeTask(
+    "anthropic:claude-opus-4-6-image-moderator",
+    IMAGE_MODE_MODERATOR_SYSTEM_PROMPT,
+    userMessage,
+    1024,
+    processChunk,
+    context,
+  );
+
+  const output = bufferedOutput.trim();
+  const choiceMatch = output.match(/^Response (\d+) is the best\./i);
+  const sideNoteMatch = output.match(/Side note:\s*([\s\S]*)$/i);
+
+  const choice = choiceMatch
+    ? responses[parseInt(choiceMatch[1]) - 1]?.model
+    : undefined;
+  const note = sideNoteMatch?.[1]?.trim();
+
+  return { ...result, rawOutput: output, choice, note };
+}
+
+// Image mode summarizer - polishes the final prompt
+async function callImageModeSummarizer(
+  prompt: string,
+  responses: ResponseCandidate[],
+  moderatorReview: ModeratorReview | null,
+  onChunk: (text: string) => void,
+  onThinkingChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult> {
+  const responseBlock = responses
+    .map((r) => `### ${r.label}\n${r.response}`)
+    .join("\n\n");
+  const moderatorBlock = moderatorReview
+    ? `Moderator review:\n${moderatorReview.rawOutput || "No moderator output."}\n\nParsed choice: ${moderatorReview.choice ? MODELS[moderatorReview.choice] : "Unavailable"}\nParsed note: ${moderatorReview.note ?? "Unavailable"}`
+    : "Moderator review:\nUnavailable.";
+
+  const userMessage = `User's original request: "${prompt}"\n\nImproved prompts:\n\n${responseBlock}\n\n${moderatorBlock}\n\nPolish the best prompt into the final image generation prompt.`;
+
+  const thinkingParser = createThinkingTagParser(onChunk, onThinkingChunk);
+
+  const result = await callClaudeTask(
+    "anthropic:claude-opus-4-6-image-summarizer",
+    IMAGE_MODE_SUMMARIZER_SYSTEM_PROMPT,
+    userMessage,
+    2048,
+    thinkingParser.processText,
+    context,
+    SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS,
+  );
+
+  thinkingParser.flush();
   return result;
 }
 
-function toTerminalError(result: GuardedProviderStreamResult): string | null {
-  if (result.status === "success") {
-    return null;
+type ModelOutcome =
+  | { success: true; model: ModelId; label: string; response: string }
+  | { success: false; model: ModelId };
+
+function dispatchModelCall(
+  mode: "chat" | "image",
+  modelId: ModelId,
+  history: ChatMessage[],
+  prompt: string,
+  webContext: string | null,
+  onChunk: (text: string) => void,
+  context: StreamRequestContext,
+): Promise<GuardedProviderStreamResult | null> {
+  if (mode === "image") {
+    if (modelId === "gpt-5.2") return callImageModeModel(prompt, webContext, onChunk, context);
+    if (modelId === "claude-opus-4-6") return callImageModeClaude(prompt, webContext, onChunk, context);
+    if (modelId === "gemini-3.1-pro-preview") return callImageModeGemini(prompt, webContext, onChunk, context);
+    return Promise.resolve(null);
   }
-  if (result.status === "timed_out") {
-    return "Provider stream timed out";
+  if (modelId === "gpt-5.2") return callGPT(history, prompt, webContext, onChunk, context);
+  if (modelId === "claude-opus-4-6") return callClaude(history, prompt, webContext, onChunk, context);
+  if (modelId === "gemini-3.1-pro-preview") return callGemini(history, prompt, webContext, onChunk, context);
+  return Promise.resolve(null);
+}
+
+async function invokeModelWithGuard(
+  modelId: ModelId,
+  callProvider: (
+    onChunk: (text: string) => void,
+    context: StreamRequestContext,
+  ) => Promise<GuardedProviderStreamResult | null>,
+  send: (data: object) => boolean,
+  streamContext: StreamRequestContext,
+): Promise<ModelOutcome> {
+  send({ type: "model_start", model: modelId, label: MODELS[modelId] });
+
+  let terminalEmitted = false;
+  let modelFinalized = false;
+  const modelAbortController = new AbortController();
+
+  const emitModelDone = () => {
+    if (terminalEmitted) return;
+    terminalEmitted = true;
+    send({ type: "model_done", model: modelId });
+  };
+
+  const emitModelError = (error: string) => {
+    if (terminalEmitted) return;
+    terminalEmitted = true;
+    send({ type: "model_error", model: modelId, error });
+  };
+
+  const modelSignal = AbortSignal.any([
+    streamContext.signal,
+    modelAbortController.signal,
+  ]);
+  const modelContext: StreamRequestContext = {
+    requestId: streamContext.requestId,
+    logger: streamContext.logger,
+    signal: modelSignal,
+  };
+
+  try {
+    const modelCallPromise = callProvider(
+      (text) => {
+        if (!modelFinalized) {
+          send({ type: "model_chunk", model: modelId, content: text });
+        }
+      },
+      modelContext,
+    );
+
+    let hardTimeoutHandle: NodeJS.Timeout | null = null;
+    const modelHardTimeoutMs =
+      modelId === "gemini-3.1-pro-preview"
+        ? GEMINI_HARD_TIMEOUT_MS
+        : PROVIDER_HARD_TIMEOUT_MS;
+
+    const raceResult = await Promise.race<
+      GuardedProviderStreamResult | null | "hard_timeout"
+    >([
+      modelCallPromise,
+      new Promise<"hard_timeout">((resolve) => {
+        hardTimeoutHandle = setTimeout(
+          () => resolve("hard_timeout"),
+          modelHardTimeoutMs,
+        );
+      }),
+    ]);
+
+    if (hardTimeoutHandle) clearTimeout(hardTimeoutHandle);
+
+    if (raceResult === "hard_timeout") {
+      modelFinalized = true;
+      if (!modelAbortController.signal.aborted) {
+        modelAbortController.abort("model_hard_timeout");
+      }
+      emitModelError("Provider call timed out");
+      void modelCallPromise.catch(() => undefined);
+      return { success: false, model: modelId };
+    }
+
+    modelFinalized = true;
+
+    if (!raceResult) {
+      emitModelError("Unknown model");
+      return { success: false, model: modelId };
+    }
+
+    const terminalError = toTerminalError(raceResult);
+    if (terminalError) {
+      emitModelError(terminalError);
+      return { success: false, model: modelId };
+    }
+
+    emitModelDone();
+    return {
+      success: true,
+      model: modelId,
+      label: MODELS[modelId],
+      response: raceResult.output,
+    };
+  } catch (err) {
+    modelFinalized = true;
+    const message = err instanceof Error ? err.message : "Unknown error";
+    emitModelError(message);
+    return { success: false, model: modelId };
   }
-  if (result.status === "aborted") {
-    return "Provider stream aborted";
-  }
-  if (result.status === "empty") {
-    return "Provider returned empty output";
-  }
-  return result.error?.message ?? "Provider stream failed";
 }
 
 router.post("/multi-chat", async (req, res) => {
@@ -414,11 +907,25 @@ router.post("/multi-chat", async (req, res) => {
     return;
   }
 
-  const { prompt, models, webSearch, history } = parsed.data;
+  const { prompt, models, webSearch, mode, history } = parsed.data;
   const requestWithLog = req as typeof req & {
     id?: string;
     log: StreamRequestContext["logger"];
   };
+
+  // For image mode, get/create owner ID early for image generation later
+  let imageOwnerId: string | undefined;
+  if (mode === "image") {
+    imageOwnerId = getOrCreateAnonymousOwnerId(req);
+    // Set cookie for owner ID
+    res.cookie("imagegen_owner_id", imageOwnerId, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "strict",
+      maxAge: 31536000 * 1000,
+    });
+  }
+
   const streamAbortController = new AbortController();
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -441,13 +948,14 @@ router.post("/multi-chat", async (req, res) => {
     }
   });
 
-  const send = (data: object) => {
+  const send = (data: object): boolean => {
     if (connectionClosed || res.writableEnded || res.destroyed) {
-      return;
+      return false;
     }
     res.write(`data: ${JSON.stringify(data)}\n\n`);
     const flushableResponse = res as typeof res & { flush?: () => void };
     flushableResponse.flush?.();
+    return true;
   };
 
   let webContext: string | null = null;
@@ -477,172 +985,20 @@ router.post("/multi-chat", async (req, res) => {
       signal: streamAbortController.signal,
     };
 
-    const invokeModel = async (
-      modelId: ModelId,
-    ): Promise<
-      | {
-          success: true;
-          model: ModelId;
-          label: string;
-          response: string;
-        }
-      | { success: false; model: ModelId }
-    > => {
-      send({ type: "model_start", model: modelId, label: MODELS[modelId] });
-
-      let terminalEmitted = false;
-      let modelFinalized = false;
-      const modelAbortController = new AbortController();
-
-      const emitModelDone = () => {
-        if (terminalEmitted) {
-          return;
-        }
-        terminalEmitted = true;
-        send({ type: "model_done", model: modelId });
-      };
-
-      const emitModelError = (error: string) => {
-        if (terminalEmitted) {
-          return;
-        }
-        terminalEmitted = true;
-        send({ type: "model_error", model: modelId, error });
-      };
-
-      const modelSignal = AbortSignal.any([
-        streamContext.signal,
-        modelAbortController.signal,
-      ]);
-      const modelContext: StreamRequestContext = {
-        requestId: streamContext.requestId,
-        logger: streamContext.logger,
-        signal: modelSignal,
-      };
-
-      try {
-        const modelCallPromise: Promise<GuardedProviderStreamResult | null> =
-          (async () => {
-            if (modelId === "gpt-5.2") {
-              return callGPT(
-                history,
-                prompt,
-                webContext,
-                (text) => {
-                  if (!modelFinalized) {
-                    send({
-                      type: "model_chunk",
-                      model: modelId,
-                      content: text,
-                    });
-                  }
-                },
-                modelContext,
-              );
-            }
-
-            if (modelId === "claude-opus-4-6") {
-              return callClaude(
-                history,
-                prompt,
-                webContext,
-                (text) => {
-                  if (!modelFinalized) {
-                    send({
-                      type: "model_chunk",
-                      model: modelId,
-                      content: text,
-                    });
-                  }
-                },
-                modelContext,
-              );
-            }
-
-            if (modelId === "gemini-3.1-pro-preview") {
-              return callGemini(
-                history,
-                prompt,
-                webContext,
-                (text) => {
-                  if (!modelFinalized) {
-                    send({
-                      type: "model_chunk",
-                      model: modelId,
-                      content: text,
-                    });
-                  }
-                },
-                modelContext,
-              );
-            }
-
-            return null;
-          })();
-
-        let hardTimeoutHandle: NodeJS.Timeout | null = null;
-
-        const modelHardTimeoutMs =
-          modelId === "gemini-3.1-pro-preview"
-            ? GEMINI_HARD_TIMEOUT_MS
-            : PROVIDER_HARD_TIMEOUT_MS;
-
-        const raceResult = await Promise.race<
-          GuardedProviderStreamResult | null | "hard_timeout"
-        >([
-          modelCallPromise,
-          new Promise<"hard_timeout">((resolve) => {
-            hardTimeoutHandle = setTimeout(
-              () => resolve("hard_timeout"),
-              modelHardTimeoutMs,
-            );
-          }),
-        ]);
-
-        if (hardTimeoutHandle) {
-          clearTimeout(hardTimeoutHandle);
-        }
-
-        if (raceResult === "hard_timeout") {
-          modelFinalized = true;
-          if (!modelAbortController.signal.aborted) {
-            modelAbortController.abort("model_hard_timeout");
-          }
-          emitModelError("Provider call timed out");
-          void modelCallPromise.catch(() => undefined);
-          return { success: false, model: modelId };
-        }
-
-        modelFinalized = true;
-
-        if (!raceResult) {
-          emitModelError("Unknown model");
-          return { success: false, model: modelId };
-        }
-
-        const terminalError = toTerminalError(raceResult);
-        if (terminalError) {
-          emitModelError(terminalError);
-          return { success: false, model: modelId };
-        }
-
-        emitModelDone();
-        return {
-          success: true,
-          model: modelId,
-          label: MODELS[modelId],
-          response: raceResult.output,
-        };
-      } catch (err) {
-        modelFinalized = true;
-        const message = err instanceof Error ? err.message : "Unknown error";
-        emitModelError(message);
-        return { success: false, model: modelId };
-      }
-    };
+    const modelsToInvoke = mode === "image"
+      ? (["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[])
+      : models;
 
     const modelOutcomes = await Promise.allSettled(
-      models.map((modelId) => invokeModel(modelId)),
+      modelsToInvoke.map((modelId) =>
+        invokeModelWithGuard(
+          modelId,
+          (onChunk, ctx) =>
+            dispatchModelCall(mode, modelId, history, prompt, webContext, onChunk, ctx),
+          send,
+          streamContext,
+        ),
+      ),
     );
 
     const successfulResponses = modelOutcomes.flatMap((outcome, index) => {
@@ -660,7 +1016,7 @@ router.post("/multi-chat", async (req, res) => {
         requestWithLog.log.error(
           {
             requestId: requestWithLog.id,
-            model: models[index],
+            model: modelsToInvoke[index],
             err: outcome.reason,
           },
           "multi_chat_model_invoke_rejected",
@@ -670,37 +1026,159 @@ router.post("/multi-chat", async (req, res) => {
       return [];
     });
 
-    if (successfulResponses.length >= 2) {
+    // Handle moderator and summarizer based on mode
+    if (mode === "image") {
+      // Image mode: use image-specific moderator and summarizer, then generate image
+      let moderatorReview: ModeratorReview | null = null;
+
+      if (successfulResponses.length >= 2) {
+        send({ type: "moderator_start" });
+        try {
+          const moderatorResult = await callImageModeModerator(
+            prompt,
+            successfulResponses,
+            (text) => send({ type: "moderator_chunk", content: text }),
+            streamContext,
+          );
+          const terminalError = toTerminalError(moderatorResult);
+          if (terminalError) {
+            send({ type: "moderator_error", error: terminalError });
+          } else {
+            moderatorReview = {
+              rawOutput: moderatorResult.rawOutput,
+              choice: moderatorResult.choice,
+              note: moderatorResult.note,
+            };
+            send({ type: "moderator_done", choice: moderatorResult.choice, note: moderatorResult.note });
+          }
+        } catch (err) {
+          send({ type: "moderator_error", error: err instanceof Error ? err.message : "Unknown error" });
+        }
+      }
+
       send({ type: "summary_start" });
+      let polishedPrompt = "";
       try {
-        const summaryResult = await callSummarizer(
-          history,
+        const summaryResult = await callImageModeSummarizer(
           prompt,
           successfulResponses,
+          moderatorReview,
           (text) => {
+            polishedPrompt += text;
             send({ type: "summary_chunk", content: text });
           },
-          (text) => {
-            send({ type: "summary_thinking_chunk", content: text });
-          },
+          (text) => send({ type: "summary_thinking_chunk", content: text }),
           streamContext,
         );
         const terminalError = toTerminalError(summaryResult);
         if (terminalError) {
           send({ type: "summary_error", error: terminalError });
-        } else {
-          send({ type: "summary_done" });
+          return; // Cannot proceed to image generation without polished prompt
         }
+        send({ type: "summary_done" });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        send({ type: "summary_error", error: message });
+        send({ type: "summary_error", error: err instanceof Error ? err.message : "Unknown error" });
+        return;
       }
-    } else if (successfulResponses.length === 1) {
-      send({ type: "summary_start" });
-      send({ type: "summary_chunk", content: successfulResponses[0].response });
-      send({ type: "summary_done" });
+
+      // Now generate the image using the polished prompt
+      if (!polishedPrompt.trim()) {
+        send({ type: "image_generation_error", error: "No polished prompt available" });
+        return;
+      }
+
+      send({ type: "image_generation_start" });
+      try {
+        // Route the prompt to determine best image model
+        const routing = await routeImagePrompt(polishedPrompt);
+        send({
+          type: "image_generation_routed",
+          provider: routing.routingCategory,
+          routingReason: routing.routingReason,
+        });
+
+        // Generate and persist the image
+        if (!imageOwnerId) {
+          imageOwnerId = getOrCreateAnonymousOwnerId(req);
+        }
+        const imageResult = await createGeneratedImage({
+          ownerId: imageOwnerId,
+          prompt: polishedPrompt,
+          routingCategory: routing.routingCategory,
+          routingReason: routing.routingReason,
+        });
+
+        if (!imageResult.success) {
+          send({ type: "image_generation_error", error: imageResult.error, blockReason: imageResult.blockReason });
+          return;
+        }
+
+        send({
+          type: "image_generation_done",
+          imageId: imageResult.image.id,
+          provider: imageResult.image.provider,
+          model: imageResult.image.model,
+          routingReason: imageResult.image.routingReason,
+        });
+      } catch (err) {
+        send({ type: "image_generation_error", error: err instanceof Error ? err.message : "Image generation failed" });
+      }
     } else {
-      send({ type: "summary_error", error: "No successful model responses" });
+      // Chat mode: use regular moderator and summarizer
+      if (successfulResponses.length >= 2) {
+        let moderatorReview: ModeratorReview | null = null;
+
+        send({ type: "moderator_start" });
+        try {
+          const moderatorResult = await callModerator(
+            history,
+            prompt,
+            successfulResponses,
+            (text) => send({ type: "moderator_chunk", content: text }),
+            streamContext,
+          );
+          const terminalError = toTerminalError(moderatorResult);
+          if (terminalError) {
+            send({ type: "moderator_error", error: terminalError });
+          } else {
+            moderatorReview = {
+              rawOutput: moderatorResult.rawOutput,
+              choice: moderatorResult.choice,
+              note: moderatorResult.note,
+            };
+            send({ type: "moderator_done", choice: moderatorResult.choice, note: moderatorResult.note });
+          }
+        } catch (err) {
+          send({ type: "moderator_error", error: err instanceof Error ? err.message : "Unknown error" });
+        }
+
+        send({ type: "summary_start" });
+        try {
+          const summaryResult = await callSummarizer(
+            history,
+            prompt,
+            successfulResponses,
+            moderatorReview,
+            (text) => send({ type: "summary_chunk", content: text }),
+            (text) => send({ type: "summary_thinking_chunk", content: text }),
+            streamContext,
+          );
+          const terminalError = toTerminalError(summaryResult);
+          if (terminalError) {
+            send({ type: "summary_error", error: terminalError });
+          } else {
+            send({ type: "summary_done" });
+          }
+        } catch (err) {
+          send({ type: "summary_error", error: err instanceof Error ? err.message : "Unknown error" });
+        }
+      } else if (successfulResponses.length === 1) {
+        send({ type: "summary_start" });
+        send({ type: "summary_chunk", content: successfulResponses[0].response });
+        send({ type: "summary_done" });
+      } else {
+        send({ type: "summary_error", error: "No successful model responses" });
+      }
     }
   } finally {
     send({ type: "done" });
