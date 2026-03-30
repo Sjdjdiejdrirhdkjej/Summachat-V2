@@ -167,7 +167,7 @@ function ModeChip({
           <rect x="14" y="14" width="7" height="7" rx="1" />
         </svg>
       ),
-      label: "Compare",
+      label: "Precise",
     },
     image: {
       icon: (
@@ -1199,6 +1199,13 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                 : t,
             );
             break;
+          case "start":
+            updateTurn((t) =>
+              t.type === "text" && t.id === turnId
+                ? { ...t, modelState: { ...t.modelState, status: "streaming" } }
+                : t,
+            );
+            break;
           case "chunk":
             if (typeof event.content !== "string") break;
             updateTurn((t) =>
@@ -1580,7 +1587,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                     <rect x="3" y="14" width="7" height="7" rx="1" />
                     <rect x="14" y="14" width="7" height="7" rx="1" />
                   </svg>
-                  <span className="text-sm font-medium">Compare</span>
+                  <span className="text-sm font-medium">Precise</span>
                 </button>
                 <button
                   type="button"
@@ -1606,12 +1613,12 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
               <div className="space-y-2">
                 <p className="text-gray-300 text-lg font-medium">
                   {composerMode === "ask" && "Ask a question"}
-                  {composerMode === "compare" && "Compare AI models"}
+                  {composerMode === "compare" && "Precise Mode"}
                   {composerMode === "image" && "Generate an image"}
                 </p>
                 <p className="text-gray-500 text-sm">
                   {composerMode === "ask" && "Get answers from GPT, Claude, or Gemini with optional web search."}
-                  {composerMode === "compare" && "Send your prompt to multiple models and compare their responses side by side."}
+                  {composerMode === "compare" && "Uses multiple models to generate precise, near-perfect answers."}
                   {composerMode === "image" && "Describe what you want to see and let AI create it for you."}
                 </p>
               </div>
@@ -1739,7 +1746,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
 
           {/* Hint text */}
           <p className="text-[10px] text-gray-600 text-center">
-            Press Ctrl+Enter to send • {composerMode === "compare" ? "Sends to all selected models" : composerMode === "ask" ? "Sends to single model" : "Generates an image"}
+            Press Ctrl+Enter to send • {composerMode === "compare" ? "Multi-model synthesis for precise answers" : composerMode === "ask" ? "Sends to single model" : "Generates an image"}
           </p>
         </div>
       </div>

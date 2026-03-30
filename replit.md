@@ -7,7 +7,7 @@ npm/bun workspace monorepo using TypeScript. Each package manages its own depend
 ## Stack
 
 - **Monorepo tool**: npm workspaces
-- **Node.js version**: 24
+- **Node.js version**: 22
 - **Package manager**: npm or bun (both supported)
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
