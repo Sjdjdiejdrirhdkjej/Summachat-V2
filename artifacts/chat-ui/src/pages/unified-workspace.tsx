@@ -1542,38 +1542,78 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       <div className="flex-1 overflow-y-auto">
         {turns.length === 0 ? (
           <div className="h-full flex items-center justify-center px-4 py-16">
-            <div className="text-center space-y-3 max-w-md">
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <span className="text-2xl">💬</span>
-                <span className="text-2xl">⚖️</span>
-                <span className="text-2xl">🎨</span>
-              </div>
-              <p className="text-gray-300 text-lg font-medium">What do you want to create?</p>
-              <p className="text-gray-500 text-sm">
-                Ask a question, compare models, or generate an image — all in one place.
-              </p>
-              <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
+            <div className="text-center space-y-6 max-w-lg">
+              {/* Mode cards */}
+              <div className="flex items-stretch justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => setComposerMode("ask")}
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+                  disabled={appStatus === "streaming"}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
+                    composerMode === "ask"
+                      ? "bg-violet-600/20 border-violet-500 text-white"
+                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                  )}
                 >
-                  Ask a question
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <path d="M12 17h.01" />
+                  </svg>
+                  <span className="text-sm font-medium">Ask</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setComposerMode("compare")}
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+                  disabled={appStatus === "streaming"}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
+                    composerMode === "compare"
+                      ? "bg-violet-600/20 border-violet-500 text-white"
+                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                  )}
                 >
-                  Compare models
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                  </svg>
+                  <span className="text-sm font-medium">Compare</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setComposerMode("image")}
-                  className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-sm text-white transition-colors"
+                  disabled={appStatus === "streaming"}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
+                    composerMode === "image"
+                      ? "bg-violet-600/20 border-violet-500 text-white"
+                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                  )}
                 >
-                  Generate image
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5-5 5" />
+                  </svg>
+                  <span className="text-sm font-medium">Image</span>
                 </button>
+              </div>
+
+              {/* Dynamic content based on mode */}
+              <div className="space-y-2">
+                <p className="text-gray-300 text-lg font-medium">
+                  {composerMode === "ask" && "Ask a question"}
+                  {composerMode === "compare" && "Compare AI models"}
+                  {composerMode === "image" && "Generate an image"}
+                </p>
+                <p className="text-gray-500 text-sm">
+                  {composerMode === "ask" && "Get answers from GPT, Claude, or Gemini with optional web search."}
+                  {composerMode === "compare" && "Send your prompt to multiple models and compare their responses side by side."}
+                  {composerMode === "image" && "Describe what you want to see and let AI create it for you."}
+                </p>
               </div>
             </div>
           </div>
