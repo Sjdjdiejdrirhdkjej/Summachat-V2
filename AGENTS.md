@@ -30,7 +30,7 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
   - `lib/api-zod/` — generated Zod validators.
   - `lib/api-client-react/` — generated React client.
   - `lib/db/` — Drizzle schema and database access.
-- `lib/integrations/` — external AI service integrations.
+- `lib/integrations/` — external AI service integrations. Note: `lib/integrations/` directory exists but integrations live as sibling packages with `-ai` suffix.
   - `lib/integrations-anthropic-ai/` — Anthropic AI integration.
   - `lib/integrations-gemini-ai/` — Google Gemini AI integration.
   - `lib/integrations-openai-ai-server/` — OpenAI AI integration (server-side).
@@ -130,6 +130,9 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
   - Server routes consume generated validators and shared libs.
 - Database code follows a schema-plus-inferred-types pattern.
 - Server logging uses pino with redaction of sensitive headers/cookies.
+- API server build: custom `build.mjs` (esbuild with 80+ externals, not tsup/tsx).
+- Vite configs conditionally load Replit plugins when `REPL_ID` env var is set.
+- Root `package.json` has aggressive dependency overrides (esbuild, undici, yaml, tar) — don't change without reason.
 
 ## Working norms for agents
 
