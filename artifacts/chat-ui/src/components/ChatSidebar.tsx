@@ -195,7 +195,7 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
                   <button
                     type="button"
                     onClick={(e) => handleDelete(item, e)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-0.5 rounded"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-red-400 transition-all p-0.5 rounded"
                     aria-label="Delete"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
