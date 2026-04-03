@@ -1,7 +1,19 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { ai } from "@workspace/integrations-gemini-ai";
+import {
+  tryGetOpenAiClient,
+} from "@workspace/integrations-openai-ai-server";
+import {
+  tryGetAnthropicClient,
+} from "@workspace/integrations-anthropic-ai";
+import {
+  ai,
+  getActiveProvider as getGeminiActiveProvider,
+} from "@workspace/integrations-gemini-ai";
+import {
+  resolveAnthropicUpstreamModel,
+  resolveGeminiUpstreamModel,
+  resolveOpenAiUpstreamModel,
+} from "../lib/agentrouter-upstream-models.js";
 import { buildWebContext, searchWeb } from "../lib/web-search.js";
 import {
   runGuardedProviderStream,
@@ -64,11 +76,27 @@ function toClaudeMessages(messages: ChatMessage[]) {
   }[];
 }
 
-function toGeminiContents(messages: ChatMessage[]) {
-  return messages.map((m) => ({
-    role: m.role === "assistant" ? ("model" as const) : ("user" as const),
-    parts: [{ text: m.content }],
-  }));
+function toGeminiContents(messages: ChatMessage[], webContext: string | null) {
+  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+
+  if (webContext) {
+    contents.push({ role: "user", parts: [{ text: webContext }] });
+    contents.push({
+      role: "model",
+      parts: [
+        { text: "Understood. I will use these results to inform my answer." },
+      ],
+    });
+  }
+
+  for (const m of messages) {
+    contents.push({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    });
+  }
+
+  return contents;
 }
 
 function getSearchQuery(messages: ChatMessage[]): string {
@@ -80,12 +108,52 @@ function getSearchQuery(messages: ChatMessage[]): string {
   return messages[messages.length - 1]?.content ?? "";
 }
 
+function getGeminiChunkText(chunk: unknown): string | null {
+  // Gemini SDK stream chunks are `GenerateContentResponse` objects where
+  // `chunk.text` may be temporarily `undefined` depending on the chunk.
+  // Fall back to extracting text parts from candidates.
+  const c = chunk as {
+    text?: string;
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+    }>;
+  };
+
+  if (typeof c.text === "string" && c.text.length > 0) {
+    return c.text;
+  }
+
+  const parts = c.candidates?.[0]?.content?.parts;
+  if (!parts) return null;
+
+  let out = "";
+  for (const part of parts) {
+    if (part.thought) continue;
+    if (typeof part.text === "string" && part.text.length > 0) {
+      out += part.text;
+    }
+  }
+
+  return out.length > 0 ? out : null;
+}
+
 async function callGPT(
   messages: ChatMessage[],
   webContext: string | null,
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const openai = tryGetOpenAiClient();
+  if (!openai) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("OpenAI integration is not configured"),
+    };
+  }
+
   const requestMessages: {
     role: "system" | "user" | "assistant";
     content: string;
@@ -105,7 +173,7 @@ async function callGPT(
     startStream: async ({ signal }) => {
       const stream = await openai.chat.completions.create(
         {
-          model: "gpt-5.2",
+          model: resolveOpenAiUpstreamModel("gpt-5.2"),
           max_completion_tokens: 8192,
           messages: requestMessages,
           stream: true,
@@ -125,6 +193,17 @@ async function callClaude(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const anthropic = tryGetAnthropicClient();
+  if (!anthropic) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Anthropic integration is not configured"),
+    };
+  }
+
   return runGuardedProviderStream({
     provider: "anthropic:claude-opus-4-6",
     requestId: context.requestId,
@@ -134,7 +213,7 @@ async function callClaude(
     externalAbortSignal: context.signal,
     startStream: async () => {
       const stream = anthropic.messages.stream({
-        model: "claude-opus-4-6",
+        model: resolveAnthropicUpstreamModel("claude-opus-4-6"),
         max_tokens: 8192,
         system: webContext ?? undefined,
         messages: toClaudeMessages(messages),
@@ -160,19 +239,11 @@ async function callGemini(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
-  const contents = toGeminiContents(messages);
-  if (webContext) {
-    contents.unshift({
-      role: "model",
-      parts: [
-        { text: "Understood. I will use these results to inform my answer." },
-      ],
-    });
-    contents.unshift({ role: "user", parts: [{ text: webContext }] });
-  }
+  const contents = toGeminiContents(messages, webContext);
+  const geminiProvider = getGeminiActiveProvider();
 
   return runGuardedProviderStream({
-    provider: "gemini:gemini-3.1-pro-preview",
+    provider: `gemini:gemini-3.1-pro-preview:${geminiProvider ?? "unknown"}`,
     requestId: context.requestId,
     logger: context.logger,
     overallTimeoutMs: GEMINI_OVERALL_TIMEOUT_MS,
@@ -180,13 +251,13 @@ async function callGemini(
     externalAbortSignal: context.signal,
     startStream: async ({ signal }) => {
       const stream = (await ai.models.generateContentStream({
-        model: "gemini-3.1-pro-preview",
+        model: resolveGeminiUpstreamModel("gemini-3.1-pro-preview"),
         contents,
         config: { maxOutputTokens: 8192, abortSignal: signal },
-      })) as AsyncIterable<{ text: string }>;
+      })) as AsyncIterable<unknown>;
       return { stream };
     },
-    getChunkText: (chunk) => chunk.text,
+    getChunkText: (chunk) => getGeminiChunkText(chunk),
     onChunk,
   });
 }
@@ -261,7 +332,12 @@ router.post("/chat", async (req, res) => {
     return true;
   };
 
-  send({ type: "start", model, label: MODELS[model] });
+  send({
+    type: "start",
+    model,
+    label: MODELS[model],
+  });
+
   try {
     let webContext: string | null = null;
     if (webSearch) {
@@ -302,34 +378,31 @@ router.post("/chat", async (req, res) => {
 
     let providerResult: GuardedProviderStreamResult | null = null;
     let emittedVisibleChunk = false;
+
+    const onChunk = (text: string) => {
+      emittedVisibleChunk =
+        send({ type: "chunk", content: text }) || emittedVisibleChunk;
+    };
+
     if (model === "gpt-5.2") {
       providerResult = await callGPT(
         messages,
         webContext,
-        (text) => {
-          emittedVisibleChunk =
-            send({ type: "chunk", content: text }) || emittedVisibleChunk;
-        },
+        onChunk,
         streamContext,
       );
     } else if (model === "claude-opus-4-6") {
       providerResult = await callClaude(
         messages,
         webContext,
-        (text) => {
-          emittedVisibleChunk =
-            send({ type: "chunk", content: text }) || emittedVisibleChunk;
-        },
+        onChunk,
         streamContext,
       );
     } else if (model === "gemini-3.1-pro-preview") {
       providerResult = await callGemini(
         messages,
         webContext,
-        (text) => {
-          emittedVisibleChunk =
-            send({ type: "chunk", content: text }) || emittedVisibleChunk;
-        },
+        onChunk,
         streamContext,
       );
     }

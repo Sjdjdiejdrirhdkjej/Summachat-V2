@@ -1,4 +1,5 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { resolveOpenAiUpstreamModel } from "../agentrouter-upstream-models.js";
 import { z } from "zod";
 import { routingCategorySchema, type RoutingCategory } from "./prompt-enhancer.js";
 
@@ -67,7 +68,7 @@ export async function routeImagePrompt(prompt: string): Promise<{
   routingReason: string;
 }> {
   const completion = await openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: resolveOpenAiUpstreamModel("gpt-5.2"),
     max_completion_tokens: 256,
     response_format: { type: "json_object" },
     messages: [

@@ -1,4 +1,5 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { resolveOpenAiUpstreamModel } from "../agentrouter-upstream-models.js";
 import { z } from "zod";
 
 export const routingCategorySchema = z.enum([
@@ -77,7 +78,7 @@ export async function enhanceImagePrompt(
   prompt: string,
 ): Promise<PromptEnhancementResult> {
   const completion = await openai.chat.completions.create({
-    model: "gpt-5.2",
+    model: resolveOpenAiUpstreamModel("gpt-5.2"),
     max_completion_tokens: 512,
     response_format: { type: "json_object" },
     messages: [

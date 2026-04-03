@@ -15,6 +15,11 @@ import {
 import { createGeneratedImage } from "../lib/image-generation/create-generated-image.js";
 import { routeImagePrompt } from "../lib/image-generation/route-image-prompt.js";
 import { getOrCreateAnonymousOwnerId } from "../lib/anonymous-owner.js";
+import {
+  resolveAnthropicUpstreamModel,
+  resolveGeminiUpstreamModel,
+  resolveOpenAiUpstreamModel,
+} from "../lib/agentrouter-upstream-models.js";
 import { createThinkingTagParser } from "../lib/thinking-tag-parser.js";
 import { z } from "zod";
 
@@ -100,7 +105,7 @@ async function callGPT(
     startStream: async ({ signal }) => {
       const stream = await openai.chat.completions.create(
         {
-          model: "gpt-5.2",
+          model: resolveOpenAiUpstreamModel("gpt-5.2"),
           max_completion_tokens: 8192,
           messages,
           stream: true,
@@ -137,7 +142,7 @@ async function callClaude(
     externalAbortSignal: context.signal,
     startStream: async () => {
       const stream = anthropic.messages.stream({
-        model: "claude-opus-4-6",
+        model: resolveAnthropicUpstreamModel("claude-opus-4-6"),
         max_tokens: 8192,
         system: webContext ?? undefined,
         messages: claudeMessages,
@@ -155,6 +160,32 @@ async function callClaude(
     },
     onChunk,
   });
+}
+
+function getGeminiChunkText(chunk: unknown): string | null {
+  const c = chunk as {
+    text?: string;
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+    }>;
+  };
+
+  if (typeof c.text === "string" && c.text.length > 0) {
+    return c.text;
+  }
+
+  const parts = c.candidates?.[0]?.content?.parts;
+  if (!parts) return null;
+
+  let out = "";
+  for (const part of parts) {
+    if (part.thought) continue;
+    if (typeof part.text === "string" && part.text.length > 0) {
+      out += part.text;
+    }
+  }
+
+  return out.length > 0 ? out : null;
 }
 
 async function callGemini(
@@ -191,13 +222,13 @@ async function callGemini(
     externalAbortSignal: context.signal,
     startStream: async ({ signal }) => {
       const stream = (await ai.models.generateContentStream({
-        model: "gemini-3.1-pro-preview",
+        model: resolveGeminiUpstreamModel("gemini-3.1-pro-preview"),
         contents,
         config: { maxOutputTokens: 8192, abortSignal: signal },
-      })) as AsyncIterable<{ text: string }>;
+      })) as AsyncIterable<unknown>;
       return { stream };
     },
-    getChunkText: (chunk) => chunk.text,
+    getChunkText: (chunk) => getGeminiChunkText(chunk),
     onChunk,
   });
 }
@@ -446,7 +477,7 @@ async function callClaudeTask(
     externalAbortSignal: context.signal,
     startStream: async () => {
       const stream = anthropic.messages.stream({
-        model: "claude-opus-4-6",
+        model: resolveAnthropicUpstreamModel("claude-opus-4-6"),
         max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
@@ -598,7 +629,7 @@ async function callImageModeModel(
     startStream: async ({ signal }) => {
       const stream = await openai.chat.completions.create(
         {
-          model: "gpt-5.2",
+          model: resolveOpenAiUpstreamModel("gpt-5.2"),
           max_completion_tokens: 2048,
           messages: [
             { role: "system", content: IMAGE_MODE_MODEL_SYSTEM_PROMPT },
@@ -632,7 +663,7 @@ async function callImageModeClaude(
     externalAbortSignal: context.signal,
     startStream: async () => {
       const stream = anthropic.messages.stream({
-        model: "claude-opus-4-6",
+        model: resolveAnthropicUpstreamModel("claude-opus-4-6"),
         max_tokens: 2048,
         system: IMAGE_MODE_MODEL_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
@@ -665,11 +696,19 @@ async function callImageModeGemini(
     },
     {
       role: "model",
-      parts: [{ text: "I understand. I'll improve the user's image prompt with detailed, specific instructions for lighting, composition, style, and subject clarity." }],
+      parts: [
+        {
+          text: "I understand. I'll improve the user's image prompt with detailed, specific instructions for lighting, composition, style, and subject clarity.",
+        },
+      ],
     },
     {
       role: "user",
-      parts: [{ text: `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}` }],
+      parts: [
+        {
+          text: `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}`,
+        },
+      ],
     },
   ];
 
@@ -682,13 +721,13 @@ async function callImageModeGemini(
     externalAbortSignal: context.signal,
     startStream: async ({ signal }) => {
       const stream = (await ai.models.generateContentStream({
-        model: "gemini-3.1-pro-preview",
+        model: resolveGeminiUpstreamModel("gemini-3.1-pro-preview"),
         contents,
         config: { maxOutputTokens: 2048, abortSignal: signal },
-      })) as AsyncIterable<{ text: string }>;
+      })) as AsyncIterable<unknown>;
       return { stream };
     },
-    getChunkText: (chunk) => chunk.text,
+    getChunkText: (chunk) => getGeminiChunkText(chunk),
     onChunk,
   });
 }
@@ -782,14 +821,20 @@ function dispatchModelCall(
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult | null> {
   if (mode === "image") {
-    if (modelId === "gpt-5.2") return callImageModeModel(prompt, webContext, onChunk, context);
-    if (modelId === "claude-opus-4-6") return callImageModeClaude(prompt, webContext, onChunk, context);
-    if (modelId === "gemini-3.1-pro-preview") return callImageModeGemini(prompt, webContext, onChunk, context);
+    if (modelId === "gpt-5.2")
+      return callImageModeModel(prompt, webContext, onChunk, context);
+    if (modelId === "claude-opus-4-6")
+      return callImageModeClaude(prompt, webContext, onChunk, context);
+    if (modelId === "gemini-3.1-pro-preview")
+      return callImageModeGemini(prompt, webContext, onChunk, context);
     return Promise.resolve(null);
   }
-  if (modelId === "gpt-5.2") return callGPT(history, prompt, webContext, onChunk, context);
-  if (modelId === "claude-opus-4-6") return callClaude(history, prompt, webContext, onChunk, context);
-  if (modelId === "gemini-3.1-pro-preview") return callGemini(history, prompt, webContext, onChunk, context);
+  if (modelId === "gpt-5.2")
+    return callGPT(history, prompt, webContext, onChunk, context);
+  if (modelId === "claude-opus-4-6")
+    return callClaude(history, prompt, webContext, onChunk, context);
+  if (modelId === "gemini-3.1-pro-preview")
+    return callGemini(history, prompt, webContext, onChunk, context);
   return Promise.resolve(null);
 }
 
@@ -831,14 +876,11 @@ async function invokeModelWithGuard(
   };
 
   try {
-    const modelCallPromise = callProvider(
-      (text) => {
-        if (!modelFinalized) {
-          send({ type: "model_chunk", model: modelId, content: text });
-        }
-      },
-      modelContext,
-    );
+    const modelCallPromise = callProvider((text) => {
+      if (!modelFinalized) {
+        send({ type: "model_chunk", model: modelId, content: text });
+      }
+    }, modelContext);
 
     let hardTimeoutHandle: NodeJS.Timeout | null = null;
     const modelHardTimeoutMs =
@@ -866,7 +908,14 @@ async function invokeModelWithGuard(
         modelAbortController.abort("model_hard_timeout");
       }
       emitModelError("Provider call timed out");
-      void modelCallPromise.catch(() => undefined);
+      void modelCallPromise.catch((err: unknown) => {
+        if (!(err instanceof Error) || err.name !== "AbortError") {
+          streamContext.logger.warn(
+            { err, model: modelId },
+            "Unexpected error after hard timeout",
+          );
+        }
+      });
       return { success: false, model: modelId };
     }
 
@@ -985,16 +1034,29 @@ router.post("/multi-chat", async (req, res) => {
       signal: streamAbortController.signal,
     };
 
-    const modelsToInvoke = mode === "image"
-      ? (["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[])
-      : models;
+    const modelsToInvoke =
+      mode === "image"
+        ? ([
+            "gpt-5.2",
+            "claude-opus-4-6",
+            "gemini-3.1-pro-preview",
+          ] as ModelId[])
+        : models;
 
     const modelOutcomes = await Promise.allSettled(
       modelsToInvoke.map((modelId) =>
         invokeModelWithGuard(
           modelId,
           (onChunk, ctx) =>
-            dispatchModelCall(mode, modelId, history, prompt, webContext, onChunk, ctx),
+            dispatchModelCall(
+              mode,
+              modelId,
+              history,
+              prompt,
+              webContext,
+              onChunk,
+              ctx,
+            ),
           send,
           streamContext,
         ),
@@ -1049,10 +1111,17 @@ router.post("/multi-chat", async (req, res) => {
               choice: moderatorResult.choice,
               note: moderatorResult.note,
             };
-            send({ type: "moderator_done", choice: moderatorResult.choice, note: moderatorResult.note });
+            send({
+              type: "moderator_done",
+              choice: moderatorResult.choice,
+              note: moderatorResult.note,
+            });
           }
         } catch (err) {
-          send({ type: "moderator_error", error: err instanceof Error ? err.message : "Unknown error" });
+          send({
+            type: "moderator_error",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
         }
       }
 
@@ -1077,13 +1146,19 @@ router.post("/multi-chat", async (req, res) => {
         }
         send({ type: "summary_done" });
       } catch (err) {
-        send({ type: "summary_error", error: err instanceof Error ? err.message : "Unknown error" });
+        send({
+          type: "summary_error",
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
         return;
       }
 
       // Now generate the image using the polished prompt
       if (!polishedPrompt.trim()) {
-        send({ type: "image_generation_error", error: "No polished prompt available" });
+        send({
+          type: "image_generation_error",
+          error: "No polished prompt available",
+        });
         return;
       }
 
@@ -1109,7 +1184,11 @@ router.post("/multi-chat", async (req, res) => {
         });
 
         if (!imageResult.success) {
-          send({ type: "image_generation_error", error: imageResult.error, blockReason: imageResult.blockReason });
+          send({
+            type: "image_generation_error",
+            error: imageResult.error,
+            blockReason: imageResult.blockReason,
+          });
           return;
         }
 
@@ -1121,7 +1200,10 @@ router.post("/multi-chat", async (req, res) => {
           routingReason: imageResult.image.routingReason,
         });
       } catch (err) {
-        send({ type: "image_generation_error", error: err instanceof Error ? err.message : "Image generation failed" });
+        send({
+          type: "image_generation_error",
+          error: err instanceof Error ? err.message : "Image generation failed",
+        });
       }
     } else {
       // Chat mode: use regular moderator and summarizer
@@ -1146,10 +1228,17 @@ router.post("/multi-chat", async (req, res) => {
               choice: moderatorResult.choice,
               note: moderatorResult.note,
             };
-            send({ type: "moderator_done", choice: moderatorResult.choice, note: moderatorResult.note });
+            send({
+              type: "moderator_done",
+              choice: moderatorResult.choice,
+              note: moderatorResult.note,
+            });
           }
         } catch (err) {
-          send({ type: "moderator_error", error: err instanceof Error ? err.message : "Unknown error" });
+          send({
+            type: "moderator_error",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
         }
 
         send({ type: "summary_start" });
@@ -1170,11 +1259,17 @@ router.post("/multi-chat", async (req, res) => {
             send({ type: "summary_done" });
           }
         } catch (err) {
-          send({ type: "summary_error", error: err instanceof Error ? err.message : "Unknown error" });
+          send({
+            type: "summary_error",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
         }
       } else if (successfulResponses.length === 1) {
         send({ type: "summary_start" });
-        send({ type: "summary_chunk", content: successfulResponses[0].response });
+        send({
+          type: "summary_chunk",
+          content: successfulResponses[0].response,
+        });
         send({ type: "summary_done" });
       } else {
         send({ type: "summary_error", error: "No successful model responses" });
