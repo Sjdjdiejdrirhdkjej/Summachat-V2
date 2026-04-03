@@ -8,6 +8,7 @@ import {
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveApiUrl } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { getFingerprint } from "@/lib/fingerprint";
@@ -667,9 +668,8 @@ function ImageTurnCard({
   turn: ImageTurn;
   onRegenerate?: () => void;
 }) {
-  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const resolvedUrl = turn.imageId
-    ? `${base}/api/images/${turn.imageId}/content`
+    ? resolveApiUrl(`/api/images/${turn.imageId}/content`)
     : null;
   const [loading, setLoading] = useState(turn.status === "generating" || turn.status === "streaming");
 
@@ -1278,8 +1278,6 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
           return [];
         });
 
-      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-
       // Determine which endpoint to call
       const endpoint = isCompare ? "/api/multi-chat" : "/api/chat";
       const body = isCompare
@@ -1295,7 +1293,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
             webSearch,
           };
 
-      const response = await fetch(`${base}${endpoint}`, {
+      const response = await fetch(resolveApiUrl(endpoint), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -1361,8 +1359,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
     setTurns(nextTurns);
 
     try {
-      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-      const response = await fetch(`${base}/api/images/generations`, {
+      const response = await fetch(resolveApiUrl("/api/images/generations"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1389,7 +1386,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                 enhancedPrompt: result.enhancedPrompt,
                 provider: result.provider,
                 model: result.model,
-                imageUrl: `${base}/api/images/${result.id}/content`,
+                imageUrl: resolveApiUrl(`/api/images/${result.id}/content`),
               }
             : t,
         ),
@@ -1447,7 +1444,10 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
 
   return (
     <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
-      <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <ChatSidebar
+        collapsed={!sidebarOpen}
+        onToggle={() => setSidebarOpen((o) => !o)}
+      />
 
       <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">

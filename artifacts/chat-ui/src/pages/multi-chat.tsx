@@ -15,6 +15,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import { resolveApiUrl } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { getFingerprint } from "@/lib/fingerprint";
@@ -612,8 +613,7 @@ export default function MultiChat({ chatId }: Props) {
         ];
       });
 
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const response = await fetch(`${base}/api/multi-chat`, {
+      const response = await fetch(resolveApiUrl("/api/multi-chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -686,8 +686,8 @@ export default function MultiChat({ chatId }: Props) {
   return (
     <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
       <ChatSidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        collapsed={!sidebarOpen}
+        onToggle={() => setSidebarOpen((o) => !o)}
         currentChatId={chatId}
       />
 
@@ -1115,7 +1115,9 @@ export default function MultiChat({ chatId }: Props) {
                               </div>
                               <div className="relative rounded-lg overflow-hidden bg-gray-950 border border-gray-800">
                                 <img
-                                  src={`${import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}/api/images/${turn.imageGeneration.imageId}/content`}
+                                  src={resolveApiUrl(
+                                    `/api/images/${turn.imageGeneration.imageId}/content`,
+                                  )}
                                   alt="Generated"
                                   className="w-full h-auto max-h-[400px] object-contain"
                                 />

@@ -8,7 +8,13 @@
     "build:replit-artifact": "npm run -w @workspace/chat-ui build && npm run -w @workspace/api-server build",
     "artifact:api-server": "npm run build:replit-artifact && npm run -w @workspace/api-server dev:serve",
     "typecheck:libs": "tsc --build",
-    "typecheck": "npm run typecheck:libs && npm run --workspaces --if-present typecheck"
+    "typecheck": "npm run typecheck:libs && npm run --workspaces --if-present typecheck",
+    "vercel": "vercel",
+    "vercel:deploy": "vercel deploy",
+    "vercel:prod": "vercel deploy --prod",
+    "vercel:env": "vercel env",
+    "vercel:link": "vercel link",
+    "vercel:pull": "vercel pull"
   },
   "private": true,
   "devDependencies": {
@@ -42,5 +48,7 @@
     "yaml": "^2.7.1",
     "tar": "^7.5.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "vercel": "^50.38.2"
+  }
 }
