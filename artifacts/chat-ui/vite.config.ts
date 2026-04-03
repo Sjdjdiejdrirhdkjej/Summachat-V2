@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { assertVercelProductionApiOrigin } from "./src/build/vite-vercel-api-guard";
 
 const rawPort = process.env.PORT ?? "5173";
 
@@ -15,7 +16,10 @@ if (Number.isNaN(port) || port <= 0) {
 const basePath = process.env.BASE_PATH;
 const resolvedBasePath = basePath && basePath.length > 0 ? basePath : "/";
 
-export default defineConfig({
+export default defineConfig(async ({ mode }) => {
+  assertVercelProductionApiOrigin(mode, process.env);
+
+  return {
   base: resolvedBasePath,
   plugins: [
     react(),
@@ -70,4 +74,5 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
   },
+};
 });
