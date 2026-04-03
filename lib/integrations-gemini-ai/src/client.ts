@@ -1,21 +1,93 @@
 import { GoogleGenAI } from "@google/genai";
 
-if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
-  throw new Error(
-    "AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?",
+/**
+ * Gemini AI client with lazy initialization.
+ *
+ * Resolution order:
+ * 1. AGENTROUTER_API_KEY  → agentrouter.org (or AGENTROUTER_PROXY_URL)
+ * 2. AI_INTEGRATIONS_GEMINI_API_KEY + AI_INTEGRATIONS_GEMINI_BASE_URL
+ */
+
+let primaryClient: GoogleGenAI | null = null;
+let primaryInitialized = false;
+let primaryError: Error | null = null;
+let activeSource: "agentrouter" | "ai-integrations" | null = null;
+
+function getPrimaryClient(): GoogleGenAI | null {
+  if (primaryInitialized) {
+    return primaryClient;
+  }
+
+  primaryInitialized = true;
+
+  // Path 1: AgentRouter
+  const agentRouterKey = process.env.AGENTROUTER_API_KEY;
+  if (agentRouterKey) {
+    const proxyUrl = process.env.AGENTROUTER_PROXY_URL;
+    const baseUrl = proxyUrl
+      ? `${proxyUrl.replace(/\/$/, "")}/`
+      : "https://agentrouter.org/";
+
+    primaryClient = new GoogleGenAI({
+      apiKey: agentRouterKey,
+      httpOptions: { apiVersion: "", baseUrl },
+    });
+    activeSource = "agentrouter";
+    return primaryClient;
+  }
+
+  // Path 2: Replit AI Integrations
+  const integrationsKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const integrationsBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (integrationsKey && integrationsBase) {
+    primaryClient = new GoogleGenAI({
+      apiKey: integrationsKey,
+      httpOptions: { apiVersion: "", baseUrl: integrationsBase },
+    });
+    activeSource = "ai-integrations";
+    return primaryClient;
+  }
+
+  primaryError = new Error(
+    "Gemini is not configured. Set AGENTROUTER_API_KEY, or both AI_INTEGRATIONS_GEMINI_API_KEY and AI_INTEGRATIONS_GEMINI_BASE_URL.",
+  );
+  return null;
+}
+
+export function isGeminiAvailable(): boolean {
+  return Boolean(
+    process.env.AGENTROUTER_API_KEY ||
+      (process.env.AI_INTEGRATIONS_GEMINI_API_KEY &&
+        process.env.AI_INTEGRATIONS_GEMINI_BASE_URL),
   );
 }
 
-if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
-  throw new Error(
-    "AI_INTEGRATIONS_GEMINI_API_KEY must be set. Did you forget to provision the Gemini AI integration?",
+export function getGeminiClient(): GoogleGenAI {
+  const primary = getPrimaryClient();
+  if (primary) {
+    return primary;
+  }
+
+  throw (
+    primaryError ??
+    new Error("Gemini is not configured.")
   );
 }
 
-export const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+export const ai: GoogleGenAI = new Proxy({} as GoogleGenAI, {
+  get(_target, prop, receiver) {
+    const client = getGeminiClient();
+    const value = Reflect.get(client, prop, receiver);
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
   },
 });
+
+export function getActiveProvider(): "agentrouter" | "ai-integrations" | null {
+  if (getPrimaryClient()) {
+    return activeSource;
+  }
+  return null;
+}

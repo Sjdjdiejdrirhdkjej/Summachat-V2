@@ -1,0 +1,8 @@
+{
+  "name": "ai-gateway-proxy",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  }
+}

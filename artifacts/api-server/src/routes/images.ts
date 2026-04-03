@@ -79,10 +79,10 @@ router.post(
         throw new Error("Failed to create image record");
       }
 
-      // Set cookie for owner ID
       res.cookie("imagegen_owner_id", anonymousOwnerId, {
         path: "/",
         httpOnly: true,
+        secure: process.env["NODE_ENV"] === "production",
         sameSite: "strict",
         maxAge: 31536000 * 1000, // 1 year in milliseconds
       });
@@ -144,10 +144,10 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       })),
     };
 
-    // Set cookie for owner ID
     res.cookie("imagegen_owner_id", anonymousOwnerId, {
       path: "/",
       httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
       sameSite: "strict",
       maxAge: 31536000 * 1000, // 1 year in milliseconds
     });

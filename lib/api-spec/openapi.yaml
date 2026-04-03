@@ -11,6 +11,8 @@ tags:
     description: Health operations
   - name: chat
     description: Multi-model chat operations
+  - name: research
+    description: Research run control-plane operations
   - name: images
     description: AI image generation and retrieval operations
 paths:
@@ -79,6 +81,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChatSession"
+
+  /research/runs:
+    post:
+      operationId: createResearchRun
+      tags: [research]
+      summary: Create a research run
+      description: Creates a research run and returns URLs for events, snapshots, and cancellation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRunCreateRequest"
+      responses:
+        "202":
+          description: Research run accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRunCreateResponse"
+
+  /research/runs/{runId}:
+    get:
+      operationId: getResearchRunSnapshot
+      tags: [research]
+      summary: Get current research run snapshot
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current research run snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRunSnapshot"
+
+  /research/runs/{runId}/events:
+    get:
+      operationId: getResearchRunEvents
+      tags: [research]
+      summary: Stream research run events
+      description: Returns a server-sent event stream for a research run. Replay is supported via the Last-Event-ID request header.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Server-sent event stream of research run events
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ResearchRunEventEnvelope"
+
+  /research/runs/{runId}/cancel:
+    post:
+      operationId: cancelResearchRun
+      tags: [research]
+      summary: Cancel a research run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Research run cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchCancelResponse"
 
   /images/generations:
     post:
@@ -358,6 +438,558 @@ components:
             $ref: "#/components/schemas/ChatHistoryItem"
       required:
         - sessions
+
+    ResearchRunCreateRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+        config:
+          $ref: "#/components/schemas/ResearchRunConfig"
+        options:
+          type: object
+          description: Legacy budget overrides. Prefer `config` for new callers.
+          properties:
+            maxSources:
+              type: integer
+              minimum: 1
+            maxRounds:
+              type: integer
+              minimum: 1
+            maxQueries:
+              type: integer
+              minimum: 1
+      required:
+        - query
+
+    ResearchRunCreateResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+        eventsUrl:
+          type: string
+          format: uri
+        snapshotUrl:
+          type: string
+          format: uri
+        cancelUrl:
+          type: string
+          format: uri
+      required:
+        - runId
+        - eventsUrl
+        - snapshotUrl
+        - cancelUrl
+
+    ResearchRunSnapshot:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum: [research.v2]
+        id:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelling, cancelled]
+        activity:
+          $ref: "#/components/schemas/ResearchActivity"
+        phase:
+          type: string
+          deprecated: true
+          description: Legacy phase string; prefer activity for versioned lifecycle activity.
+        config:
+          $ref: "#/components/schemas/ResearchRunConfig"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchTaskStep"
+        budget:
+          $ref: "#/components/schemas/ResearchBudget"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchWarning"
+        result:
+          $ref: "#/components/schemas/ResearchResult"
+        error:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - config
+        - steps
+        - budget
+        - warnings
+        - createdAt
+        - updatedAt
+
+    ResearchRunEventEnvelope:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum: [research.v2]
+        id:
+          type: integer
+          minimum: 0
+        event:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+      required:
+        - id
+        - event
+        - data
+
+    ResearchRunConfig:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum: [research.v2]
+        panel:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ResearchRunPanelMember"
+        allowedActions:
+          type: array
+          minItems: 1
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ResearchActionKind"
+        budgetPolicy:
+          $ref: "#/components/schemas/ResearchBudgetPolicy"
+        compactionPolicy:
+          $ref: "#/components/schemas/ResearchCompactionPolicy"
+        stopPolicy:
+          $ref: "#/components/schemas/ResearchStopPolicy"
+        outputGuarantees:
+          $ref: "#/components/schemas/ResearchOutputGuarantees"
+      required:
+        - schemaVersion
+        - panel
+        - allowedActions
+        - budgetPolicy
+        - compactionPolicy
+        - stopPolicy
+        - outputGuarantees
+
+    ResearchRunPanelMember:
+      type: object
+      properties:
+        modelId:
+          type: string
+          enum: [gpt-5.2, claude-opus-4-6, gemini-3.1-pro-preview]
+        role:
+          type: string
+          minLength: 1
+      required:
+        - modelId
+
+    ResearchActionKind:
+      type: string
+      enum: [search, analyze, challenge, summarize]
+
+    ResearchBudgetPolicy:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [soft]
+        forceSynthesizeAtRatio:
+          type: number
+          minimum: 0
+          maximum: 1
+        softCaps:
+          type: object
+          properties:
+            maxQueries:
+              type: integer
+              minimum: 1
+            maxSources:
+              type: integer
+              minimum: 1
+            maxRounds:
+              type: integer
+              minimum: 1
+            maxIterations:
+              type: integer
+              minimum: 1
+            maxSearches:
+              type: integer
+              minimum: 1
+            maxAnalysisCalls:
+              type: integer
+              minimum: 1
+            maxDeliberationCalls:
+              type: integer
+              minimum: 1
+            maxQueryPasses:
+              type: integer
+              minimum: 1
+            maxAcceptedSources:
+              type: integer
+              minimum: 1
+          required:
+            - maxQueries
+            - maxSources
+            - maxRounds
+            - maxIterations
+            - maxSearches
+            - maxAnalysisCalls
+            - maxDeliberationCalls
+            - maxQueryPasses
+            - maxAcceptedSources
+      required:
+        - mode
+        - forceSynthesizeAtRatio
+        - softCaps
+
+    ResearchCompactionPolicy:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        triggerTurns:
+          type: integer
+          minimum: 1
+        preserveRecentTurns:
+          type: integer
+          minimum: 1
+      required:
+        - enabled
+        - triggerTurns
+        - preserveRecentTurns
+
+    ResearchStopPolicy:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [quality-first]
+        requireEvidence:
+          type: boolean
+        maxStalledTurns:
+          type: integer
+          minimum: 1
+        allowBudgetGuard:
+          type: boolean
+      required:
+        - mode
+        - requireEvidence
+        - maxStalledTurns
+        - allowBudgetGuard
+
+    ResearchOutputGuarantees:
+      type: object
+      properties:
+        citations:
+          type: boolean
+        dissent:
+          type: boolean
+        trace:
+          type: boolean
+        minorityReport:
+          type: boolean
+      required:
+        - citations
+        - dissent
+        - trace
+        - minorityReport
+
+    ResearchActivity:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Dynamic activity identifier emitted by the orchestrator.
+        status:
+          type: string
+          enum: [pending, active, completed, blocked, failed, cancelled]
+        message:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - key
+        - status
+
+    ResearchStopReason:
+      type: string
+      enum:
+        - converged
+        - stalled
+        - budget_guard
+        - no_evidence
+        - provider_failure
+        - cancelled
+
+    ResearchTraceEntry:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        event:
+          type: string
+        detail:
+          type: string
+      required:
+        - at
+        - event
+
+    ResearchUncertainty:
+      type: object
+      properties:
+        id:
+          type: string
+        statement:
+          type: string
+        rationale:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchEvidence"
+      required:
+        - id
+        - statement
+
+    ResearchDissent:
+      type: object
+      properties:
+        id:
+          type: string
+        claim:
+          type: string
+        rationale:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchEvidence"
+      required:
+        - id
+        - claim
+
+    ResearchMinorityReport:
+      type: object
+      properties:
+        position:
+          type: string
+        rationale:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchEvidence"
+      required:
+        - position
+        - rationale
+
+    ResearchTaskStep:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, skipped, cancelled]
+        model:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - status
+
+    ResearchBudget:
+      type: object
+      properties:
+        maxQueries:
+          type: integer
+          minimum: 0
+        usedQueries:
+          type: integer
+          minimum: 0
+        maxSources:
+          type: integer
+          minimum: 0
+        acceptedSources:
+          type: integer
+          minimum: 0
+        maxRounds:
+          type: integer
+          minimum: 0
+        completedRounds:
+          type: integer
+          minimum: 0
+      required:
+        - maxQueries
+        - usedQueries
+        - maxSources
+        - acceptedSources
+        - maxRounds
+        - completedRounds
+
+    ResearchWarning:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        model:
+          type: string
+      required:
+        - code
+        - message
+
+    ResearchSource:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        ordinal:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        domain:
+          type: string
+        url:
+          type: string
+          format: uri
+        retrievedAt:
+          type: string
+          format: date-time
+      required:
+        - sourceId
+        - ordinal
+        - title
+        - domain
+        - url
+        - retrievedAt
+
+    ResearchEvidence:
+      type: object
+      properties:
+        evidenceId:
+          type: string
+        sourceId:
+          type: string
+        excerpt:
+          type: string
+      required:
+        - evidenceId
+        - sourceId
+        - excerpt
+
+    ResearchDebateEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        round:
+          type: integer
+          minimum: 1
+        model:
+          type: string
+        type:
+          type: string
+          enum: [opening, response, rebuttal, consensus, synthesis]
+        content:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchEvidence"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - round
+        - model
+        - type
+        - content
+        - citations
+        - createdAt
+
+    ResearchCancelResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        cancelledAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - cancelledAt
+
+    ResearchResult:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum: [research.v2]
+        answer:
+          type: string
+        stopReason:
+          $ref: "#/components/schemas/ResearchStopReason"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchSource"
+        citationsValid:
+          type: boolean
+        trace:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchTraceEntry"
+        uncertainties:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchUncertainty"
+        dissents:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchDissent"
+        minorityReport:
+          $ref: "#/components/schemas/ResearchMinorityReport"
+      required:
+        - answer
+        - sources
+        - citationsValid
 
     CreateImageGenerationRequest:
       type: object

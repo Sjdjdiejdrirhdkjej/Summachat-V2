@@ -6,6 +6,7 @@ import express, {
 } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -56,16 +57,39 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS configuration - restrict to allowed origins in production
+const allowedOrigins = process.env["ALLOWED_ORIGINS"]
+  ? process.env["ALLOWED_ORIGINS"].split(",")
+  : process.env["NODE_ENV"] === "production"
+    ? [] // In production, only allow explicitly configured origins
+    : ["http://localhost:5173", "http://localhost:3000"]; // Development defaults
+
+app.use(
+  cors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true, // Allow all in dev if no config
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  }),
+);
 app.use(cookieParser());
 app.use(express.json({ limit: "4mb" }));
 app.use(express.urlencoded({ extended: true, limit: "4mb" }));
 
-app.head("/", (_req, res) => {
-  res.status(200).end();
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "Too many requests",
+      message: "Rate limit exceeded. Please try again later.",
+    });
+  },
 });
 
-app.use("/api", router);
+app.use("/api", apiLimiter, router);
 
 // Serve the Chat UI (built assets) as the main page when present.
 const srcDir = path.dirname(fileURLToPath(import.meta.url));

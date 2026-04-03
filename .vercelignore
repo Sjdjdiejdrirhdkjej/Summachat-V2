@@ -15,6 +15,10 @@ node_modules
 .sisyphus
 .vscode
 .idea
+.opencode
+.agents
+.junie
+.vercel
 
 # Replit-specific
 .replit
@@ -30,6 +34,7 @@ __pycache__
 
 # Lockfiles not needed for deployment
 bun.lock
+package-lock.json
 
 # Mockup sandbox (not deployed)
 artifacts/mockup-sandbox
@@ -42,6 +47,10 @@ artifacts/mockup-sandbox
 .npmrc
 .aider*
 .env*.local
+
+# Misc large/dev files
+ollama-linux-amd64.tgz
+workspace-export.tar.gz
 
 # Data / artifacts generated at runtime
 artifacts/api-server/.data

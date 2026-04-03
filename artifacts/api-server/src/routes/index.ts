@@ -57,5 +57,9 @@ router.use(
 );
 router.use(lazyRoute(() => import("./chat")));
 router.use(lazyRoute(() => import("./multi-chat")));
+router.use(
+  "/research",
+  lazyRoute(() => import("./research")),
+);
 
 export default router;

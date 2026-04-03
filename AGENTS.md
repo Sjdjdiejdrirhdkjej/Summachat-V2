@@ -10,14 +10,22 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 
 ## Repo snapshot
 
-- Package manager: `npm` or `bun` (both supported interchangeably).
-- Runtime/tooling baseline: Node.js 24, TypeScript 5.9.
-- Monorepo layout: npm workspaces.
-- Root workspace globs: `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`.
-- Root TypeScript uses project references.
-- Prettier is installed, but there is no repo-defined format script.
-- No repo-defined lint command was found.
-- No repo-defined test command or test runner config was found.
+- **Package manager**: `npm` or `bun` (both supported interchangeably, enforced via preinstall script).
+- **Runtime/tooling baseline**: Node.js 24, TypeScript 5.9.
+- **Monorepo layout**: npm workspaces with 14+ packages.
+- **Root workspace globs**: `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`.
+- **TypeScript**: Project references with `customConditions: ["workspace"]`.
+- **Prettier**: Installed, no repo-defined format script.
+- **Test framework**: Vitest (jsdom for UI, node for server).
+
+## Testing
+
+- **Framework**: Vitest v3.2.4 (sole test runner).
+- **Test files**: `*.test.{ts,tsx}` pattern, co-located with source files.
+- **Run all**: `npm run test` from root.
+- **Run package**: `npm run -w @workspace/<name> test`.
+- **Setup files**: `./src/test-setup.ts` per package.
+- **Libraries**: `@testing-library/react` for UI, `supertest` for API routes.
 
 ## Directory map
 
@@ -53,7 +61,7 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 - Mockup sandbox: `-w @workspace/mockup-sandbox` (dev, build, preview, typecheck)
 - DB: `-w @workspace/db` (push, push-force)
 - API codegen: `npm run -w @workspace/api-spec codegen`
-- Scripts: `npm run -w @workspace/scripts <script>`
+- Scripts: `npm run -w @workspace/scripts <script>` (uses `tsx` to run TS directly)
 - Integration packages: `npm run -w @workspace/integration-name <script>`
 
 ### When to run what
@@ -63,13 +71,6 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 - Before handoff: prefer root typecheck for code changes, build for bundle-affecting changes.
 - OpenAPI changes: run codegen, then typecheck.
 - Drizzle schema changes: use `npm run -w @workspace/db push`.
-
-### Testing
-
-- No test runner or test files are currently configured in this repository.
-- No `test` scripts found in any package.json files.
-- No Jest, Vitest, or other test framework configurations found.
-- If adding tests, consider Vitest for consistency with Vite-based apps.
 
 ## Code style and implementation rules
 
@@ -93,11 +94,12 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 ### Types
 
 - Stay in TypeScript; do not bypass the type system.
-- Respect the root strictness baseline: `noImplicitAny`, `strictNullChecks`, and `useUnknownInCatchVariables` are enabled.
+- Respect the root strictness baseline: `noImplicitAny`, `strictNullChecks`, `useUnknownInCatchVariables`, `noImplicitReturns`, and `strictPropertyInitialization` are enabled.
+- TypeScript uses `customConditions: ["workspace"]` for package resolution.
 - Do not use `as any`, `@ts-ignore`, or `@ts-expect-error`.
 - Prefer explicit types at public boundaries, exported helpers, and non-obvious state.
 - Keep schema-driven typing where it already exists.
-- In Drizzle schema files, preserve the pattern of exporting inferred types, for example `$inferSelect` and `z.infer`.
+- In Drizzle schema files, preserve the pattern of exporting inferred types, for example `$inferSelect` and `z.infer`. Use `createInsertSchema` from `drizzle-zod` for insert validation.
 
 ### Validation and API boundaries
 
@@ -128,11 +130,80 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
   - OpenAPI spec lives in `lib/api-spec/`.
   - Orval generates clients into sibling packages.
   - Server routes consume generated validators and shared libs.
-- Database code follows a schema-plus-inferred-types pattern.
+- Database code follows a schema-plus-inferred-types pattern using Drizzle ORM with PostgreSQL.
 - Server logging uses pino with redaction of sensitive headers/cookies.
 - API server build: custom `build.mjs` (esbuild with 80+ externals, not tsup/tsx).
 - Vite configs conditionally load Replit plugins when `REPL_ID` env var is set.
 - Root `package.json` has aggressive dependency overrides (esbuild, undici, yaml, tar) — don't change without reason.
+- Environment variables for AI integrations use `AI_INTEGRATIONS_*` prefix (e.g., `AI_INTEGRATIONS_ANTHROPIC_API_KEY`).
+- API server uses lazy route loading pattern in `src/routes/index.ts` for provider-dependent routes.
+- Chat UI uses Wouter for routing, React Query for API calls, and localStorage for chat persistence.
+- Cross-package dependency: api-server → db, api-zod, integrations-\*; chat-ui → api-client-react.
+
+## Package dependency graph
+
+```
+lib/api-spec (source of truth)
+       │
+       ├──[codegen]──► lib/api-zod (validators)
+       │                     │
+       │                     └──► api-server (consumer)
+       │
+       └──[codegen]──► lib/api-client-react
+                            │
+                            └──► chat-ui (consumer)
+
+lib/db ──────────────────► api-server (consumer)
+
+lib/integrations-* ──────► api-server (consumer)
+  ├── openai-ai-server
+  ├── openai-ai-react ────► chat-ui (consumer)
+  ├── anthropic-ai
+  ├── gemini-ai
+  └── vertex-ai-fallback
+```
+
+## Integration package conventions
+
+All AI integration packages in `lib/integrations-*` follow shared patterns:
+
+- **Environment variables**: `AI_INTEGRATIONS_{PROVIDER}_*` prefix (e.g., `AI_INTEGRATIONS_ANTHROPIC_API_KEY`)
+- **Lazy client init**: Module-level singleton with `getClient()`, `tryGetClient()`, `isConfigured()` accessors
+- **Subpath exports**: Server packages export `./batch`, `./image`, `./audio` as needed
+- **Batch utilities**: `batchProcess`, `batchProcessWithSSE`, `isRateLimitError` — duplicated across 3 packages, consider extracting
+- **Build**: Declaration-only output, composite TypeScript project references
+- **Server-only**: All integration packages except `openai-ai-react` use Node APIs (fs, Buffer, child_process)
+
+See `lib/integrations-openai-ai-server/AGENTS.md` for OpenAI-specific conventions.
+
+## Build and CI notes
+
+- **No CI/CD**: No GitHub Actions, no Makefile — all builds are manual via npm scripts
+- **API server build**: Custom `build.mjs` (esbuild with 80+ externals), not tsup/tsx
+- **Drizzle migrations**: Uses schema push (`db push`), not traditional migration files
+- **Vitest**: Workspace config in root, but test scripts only in package `package.json`
+- **Replit plugins**: Vite configs conditionally load plugins when `REPL_ID` env var is set
+
+## Structural deviations from standard TypeScript monorepo
+
+- **Ghost workspace glob**: `lib/integrations/*` is in workspaces but empty — actual packages are siblings (`lib/integrations-*-ai/`)
+- **Mirror code outside workspace**: `lib/integrations/*_ai_integrations/` contains staging code NOT in the monorepo
+- **Partial tsconfig references**: Root references only cover lib packages, not artifacts/scripts
+- **Python mixed in**: `.pythonlibs/` in TypeScript monorepo (for tooling)
+- **Tool directories with package.json**: `.opencode/`, `.config/kilo/` have their own npm packages
+- **Double `-ai` suffix**: `integrations-openai-ai-server` and `integrations-openai-ai-react` (redundant naming)
+
+## Anti-patterns (THIS PROJECT)
+
+- **NEVER log secrets, auth headers, cookies, or raw credentials**
+- **NEVER use empty catch blocks** — log or rethrow errors
+- **NEVER use vague words in prompts**: "beautiful", "nice", "pretty", "cool", "good", "cute"
+- **Do not bypass the type system** (`as any`, `@ts-ignore`, `@ts-expect-error`)
+- **Do not edit generated files** (`generated/*.ts`, `api-zod/src/generated/`)
+- **Do not switch package managers** without user approval
+- **Do not use `require()`** — use ESM imports only
+- **`dist/` in lib/db is read-only** — declaration-only output, never edit
+- **Fail fast on missing env vars** — don't defer checks in integration packages
 
 ## Working norms for agents
 
