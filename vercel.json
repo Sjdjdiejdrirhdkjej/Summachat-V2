@@ -1,5 +1,6 @@
 {
   "installCommand": "npm install",
   "buildCommand": "npm run -w @workspace/chat-ui build",
-  "outputDirectory": "artifacts/chat-ui/dist/public"
+  "outputDirectory": "artifacts/chat-ui/dist/public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
