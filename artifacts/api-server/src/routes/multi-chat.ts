@@ -811,6 +811,36 @@ type ModelOutcome =
   | { success: true; model: ModelId; label: string; response: string }
   | { success: false; model: ModelId };
 
+const RETRIABLE_PROVIDER_ERROR_PATTERNS: RegExp[] = [
+  /incomplete json segment/i,
+  /unexpected end of json/i,
+  /connection error/i,
+  /socket hang up/i,
+  /econnreset/i,
+  /etimedout/i,
+  /network error/i,
+  /fetch failed/i,
+  /stream ended unexpectedly/i,
+];
+
+function isRetriableProviderFailure(
+  result: GuardedProviderStreamResult,
+  streamAborted: boolean,
+): boolean {
+  if (streamAborted) {
+    return false;
+  }
+
+  if (result.status !== "errored") {
+    return false;
+  }
+
+  const message = result.error?.message ?? "";
+  return RETRIABLE_PROVIDER_ERROR_PATTERNS.some((pattern) =>
+    pattern.test(message),
+  );
+}
+
 function dispatchModelCall(
   mode: "chat" | "image",
   modelId: ModelId,
@@ -847,11 +877,10 @@ async function invokeModelWithGuard(
   send: (data: object) => boolean,
   streamContext: StreamRequestContext,
 ): Promise<ModelOutcome> {
-  send({ type: "model_start", model: modelId, label: MODELS[modelId] });
-
   let terminalEmitted = false;
   let modelFinalized = false;
   const modelAbortController = new AbortController();
+  const maxAttempts = 2;
 
   const emitModelDone = () => {
     if (terminalEmitted) return;
@@ -876,69 +905,98 @@ async function invokeModelWithGuard(
   };
 
   try {
-    const modelCallPromise = callProvider((text) => {
-      if (!modelFinalized) {
-        send({ type: "model_chunk", model: modelId, content: text });
-      }
-    }, modelContext);
-
-    let hardTimeoutHandle: NodeJS.Timeout | null = null;
-    const modelHardTimeoutMs =
-      modelId === "gemini-3.1-pro-preview"
-        ? GEMINI_HARD_TIMEOUT_MS
-        : PROVIDER_HARD_TIMEOUT_MS;
-
-    const raceResult = await Promise.race<
-      GuardedProviderStreamResult | null | "hard_timeout"
-    >([
-      modelCallPromise,
-      new Promise<"hard_timeout">((resolve) => {
-        hardTimeoutHandle = setTimeout(
-          () => resolve("hard_timeout"),
-          modelHardTimeoutMs,
-        );
-      }),
-    ]);
-
-    if (hardTimeoutHandle) clearTimeout(hardTimeoutHandle);
-
-    if (raceResult === "hard_timeout") {
-      modelFinalized = true;
-      if (!modelAbortController.signal.aborted) {
-        modelAbortController.abort("model_hard_timeout");
-      }
-      emitModelError("Provider call timed out");
-      void modelCallPromise.catch((err: unknown) => {
-        if (!(err instanceof Error) || err.name !== "AbortError") {
-          streamContext.logger.warn(
-            { err, model: modelId },
-            "Unexpected error after hard timeout",
-          );
-        }
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      send({
+        type: "model_start",
+        model: modelId,
+        label: MODELS[modelId],
+        attempt,
       });
-      return { success: false, model: modelId };
+
+      const modelCallPromise = callProvider((text) => {
+        if (!modelFinalized) {
+          send({ type: "model_chunk", model: modelId, content: text });
+        }
+      }, modelContext);
+
+      let hardTimeoutHandle: NodeJS.Timeout | null = null;
+      const modelHardTimeoutMs =
+        modelId === "gemini-3.1-pro-preview"
+          ? GEMINI_HARD_TIMEOUT_MS
+          : PROVIDER_HARD_TIMEOUT_MS;
+
+      const raceResult = await Promise.race<
+        GuardedProviderStreamResult | null | "hard_timeout"
+      >([
+        modelCallPromise,
+        new Promise<"hard_timeout">((resolve) => {
+          hardTimeoutHandle = setTimeout(
+            () => resolve("hard_timeout"),
+            modelHardTimeoutMs,
+          );
+        }),
+      ]);
+
+      if (hardTimeoutHandle) clearTimeout(hardTimeoutHandle);
+
+      if (raceResult === "hard_timeout") {
+        modelFinalized = true;
+        if (!modelAbortController.signal.aborted) {
+          modelAbortController.abort("model_hard_timeout");
+        }
+        emitModelError("Provider call timed out");
+        void modelCallPromise.catch((err: unknown) => {
+          if (!(err instanceof Error) || err.name !== "AbortError") {
+            streamContext.logger.warn(
+              { err, model: modelId },
+              "Unexpected error after hard timeout",
+            );
+          }
+        });
+        return { success: false, model: modelId };
+      }
+
+      modelFinalized = true;
+
+      if (!raceResult) {
+        emitModelError("Unknown model");
+        return { success: false, model: modelId };
+      }
+
+      const terminalError = toTerminalError(raceResult);
+      const canRetry =
+        attempt < maxAttempts &&
+        isRetriableProviderFailure(raceResult, streamContext.signal.aborted);
+      if (terminalError) {
+        if (canRetry) {
+          streamContext.logger.warn(
+            {
+              requestId: streamContext.requestId,
+              model: modelId,
+              attempt,
+              terminalError,
+            },
+            "multi_chat_model_retrying_after_transient_failure",
+          );
+          modelFinalized = false;
+          continue;
+        }
+
+        emitModelError(terminalError);
+        return { success: false, model: modelId };
+      }
+
+      emitModelDone();
+      return {
+        success: true,
+        model: modelId,
+        label: MODELS[modelId],
+        response: raceResult.output,
+      };
     }
 
-    modelFinalized = true;
-
-    if (!raceResult) {
-      emitModelError("Unknown model");
-      return { success: false, model: modelId };
-    }
-
-    const terminalError = toTerminalError(raceResult);
-    if (terminalError) {
-      emitModelError(terminalError);
-      return { success: false, model: modelId };
-    }
-
-    emitModelDone();
-    return {
-      success: true,
-      model: modelId,
-      label: MODELS[modelId],
-      response: raceResult.output,
-    };
+    emitModelError("Provider stream failed");
+    return { success: false, model: modelId };
   } catch (err) {
     modelFinalized = true;
     const message = err instanceof Error ? err.message : "Unknown error";
