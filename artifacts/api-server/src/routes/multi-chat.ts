@@ -814,14 +814,72 @@ type ModelOutcome =
 const RETRIABLE_PROVIDER_ERROR_PATTERNS: RegExp[] = [
   /incomplete json segment/i,
   /unexpected end of json/i,
+  /unexpected end/i,
+  /invalid json/i,
   /connection error/i,
+  /connection reset/i,
+  /connection closed/i,
   /socket hang up/i,
   /econnreset/i,
+  /econnrefused/i,
   /etimedout/i,
+  /eai_again/i,
+  /und_err_/i,
   /network error/i,
   /fetch failed/i,
+  /rate limit/i,
+  /\b429\b/i,
+  /\b503\b/i,
+  /service unavailable/i,
+  /overloaded/i,
+  /try again/i,
+  /upstream prematurely closed connection/i,
   /stream ended unexpectedly/i,
 ];
+
+function collectRetriableErrorText(error: Error | undefined): string {
+  if (!error) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (!next || seen.has(next)) {
+      continue;
+    }
+    seen.add(next);
+
+    if (next instanceof Error) {
+      parts.push(next.message);
+
+      const withCause = next as Error & { cause?: unknown };
+      if (withCause.cause) {
+        queue.push(withCause.cause);
+      }
+
+      if (
+        typeof AggregateError !== "undefined" &&
+        next instanceof AggregateError &&
+        Array.isArray(next.errors)
+      ) {
+        for (const nested of next.errors) {
+          queue.push(nested);
+        }
+      }
+      continue;
+    }
+
+    if (typeof next === "string") {
+      parts.push(next);
+    }
+  }
+
+  return parts.join(" | ");
+}
 
 function isRetriableProviderFailure(
   result: GuardedProviderStreamResult,
@@ -831,11 +889,23 @@ function isRetriableProviderFailure(
     return false;
   }
 
+  if (result.status === "timed_out") {
+    return true;
+  }
+
+  if (result.status === "aborted") {
+    return true;
+  }
+
+  if (result.status === "empty") {
+    return true;
+  }
+
   if (result.status !== "errored") {
     return false;
   }
 
-  const message = result.error?.message ?? "";
+  const message = collectRetriableErrorText(result.error);
   return RETRIABLE_PROVIDER_ERROR_PATTERNS.some((pattern) =>
     pattern.test(message),
   );
@@ -880,7 +950,8 @@ async function invokeModelWithGuard(
   let terminalEmitted = false;
   let modelFinalized = false;
   const modelAbortController = new AbortController();
-  const maxAttempts = 2;
+  const maxAttempts = 3;
+  const retryDelayMs = 350;
 
   const emitModelDone = () => {
     if (terminalEmitted) return;
@@ -978,6 +1049,11 @@ async function invokeModelWithGuard(
             },
             "multi_chat_model_retrying_after_transient_failure",
           );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          if (streamContext.signal.aborted) {
+            emitModelError("Provider stream aborted");
+            return { success: false, model: modelId };
+          }
           modelFinalized = false;
           continue;
         }

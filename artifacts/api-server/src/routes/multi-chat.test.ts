@@ -19,8 +19,13 @@ vi.mock("@workspace/integrations-gemini-ai", () => ({
 }));
 
 const invocationCount = new Map<string, number>();
-let openAiScenario: "retryable-first-error" | "non-retryable-error" =
-  "retryable-first-error";
+let openAiScenario:
+  | "retryable-first-error"
+  | "retryable-two-errors-then-success"
+  | "retryable-wrapped-error"
+  | "non-retryable-error" = "retryable-first-error";
+let claudeScenario: "retryable-first-error" | "stable" = "retryable-first-error";
+let geminiScenario: "retryable-first-error" | "stable" = "retryable-first-error";
 
 function resultFor(
   status: GuardedProviderStreamResult["status"],
@@ -47,6 +52,27 @@ vi.mock("../lib/provider-stream-guard.js", () => {
           if (openAiScenario === "non-retryable-error") {
             return resultFor("errored", "", "Invalid API key");
           }
+          if (openAiScenario === "retryable-two-errors-then-success") {
+            if (current <= 2) {
+              return resultFor(
+                "errored",
+                "",
+                "Incomplete JSON segment at the end",
+              );
+            }
+            return resultFor("success", "Recovered GPT output");
+          }
+          if (openAiScenario === "retryable-wrapped-error") {
+            if (current === 1) {
+              return {
+                ...resultFor("errored", ""),
+                error: new Error("Provider wrapper failure", {
+                  cause: new Error("Connection error"),
+                }),
+              };
+            }
+            return resultFor("success", "Recovered GPT output");
+          }
           if (current === 1) {
             return resultFor(
               "errored",
@@ -58,7 +84,17 @@ vi.mock("../lib/provider-stream-guard.js", () => {
         }
 
         if (options.provider === "anthropic:claude-opus-4-6") {
+          if (claudeScenario === "retryable-first-error" && current === 1) {
+            return resultFor("errored", "", "Connection error");
+          }
           return resultFor("success", "Claude stable output");
+        }
+
+        if (options.provider === "gemini:gemini-3.1-pro-preview") {
+          if (geminiScenario === "retryable-first-error" && current === 1) {
+            return resultFor("errored", "", "Incomplete JSON segment at the end");
+          }
+          return resultFor("success", "Gemini stable output");
         }
 
         if (options.provider === "anthropic:claude-opus-4-6-moderator") {
@@ -99,12 +135,14 @@ describe("multi-chat retry handling", () => {
   beforeEach(() => {
     invocationCount.clear();
     openAiScenario = "retryable-first-error";
+    claudeScenario = "retryable-first-error";
+    geminiScenario = "retryable-first-error";
   });
 
   it("retries retriable provider failures in precise mode", async () => {
     const response = await request(app).post("/api/multi-chat").send({
       prompt: "Give me a precise answer",
-      models: ["gpt-5.2", "claude-opus-4-6"],
+      models: ["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"],
       webSearch: false,
       mode: "chat",
       history: [],
@@ -133,6 +171,32 @@ describe("multi-chat retry handling", () => {
       (event) => event.type === "model_done" && event.model === "gpt-5.2",
     );
     expect(gptDone).toBeTruthy();
+
+    const claudeStarts = events.filter(
+      (event) =>
+        event.type === "model_start" &&
+        event.model === "claude-opus-4-6",
+    );
+    expect(claudeStarts).toHaveLength(2);
+
+    const claudeDone = events.find(
+      (event) =>
+        event.type === "model_done" && event.model === "claude-opus-4-6",
+    );
+    expect(claudeDone).toBeTruthy();
+
+    const geminiStarts = events.filter(
+      (event) =>
+        event.type === "model_start" &&
+        event.model === "gemini-3.1-pro-preview",
+    );
+    expect(geminiStarts).toHaveLength(2);
+
+    const geminiDone = events.find(
+      (event) =>
+        event.type === "model_done" && event.model === "gemini-3.1-pro-preview",
+    );
+    expect(geminiDone).toBeTruthy();
 
     const summaryDone = events.find((event) => event.type === "summary_done");
     const doneEvent = events.find((event) => event.type === "done");
@@ -168,5 +232,64 @@ describe("multi-chat retry handling", () => {
         event.model === "gpt-5.2",
     );
     expect(gptErrors).toHaveLength(1);
+  });
+
+  it("retries until third attempt for repeated transient failures", async () => {
+    openAiScenario = "retryable-two-errors-then-success";
+    claudeScenario = "stable";
+    geminiScenario = "stable";
+
+    const response = await request(app).post("/api/multi-chat").send({
+      prompt: "Give me a precise answer",
+      models: ["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"],
+      webSearch: false,
+      mode: "chat",
+      history: [],
+    });
+
+    expect(response.status).toBe(200);
+    const events = parseSseEvents(response.text);
+    const gptStarts = events.filter(
+      (event) =>
+        event.type === "model_start" &&
+        event.model === "gpt-5.2",
+    );
+    expect(gptStarts).toHaveLength(3);
+    expect(gptStarts[0]?.attempt).toBe(1);
+    expect(gptStarts[1]?.attempt).toBe(2);
+    expect(gptStarts[2]?.attempt).toBe(3);
+
+    const gptDone = events.find(
+      (event) => event.type === "model_done" && event.model === "gpt-5.2",
+    );
+    expect(gptDone).toBeTruthy();
+  });
+
+  it("retries when transient text exists in nested error cause", async () => {
+    openAiScenario = "retryable-wrapped-error";
+    claudeScenario = "stable";
+    geminiScenario = "stable";
+
+    const response = await request(app).post("/api/multi-chat").send({
+      prompt: "Give me a precise answer",
+      models: ["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"],
+      webSearch: false,
+      mode: "chat",
+      history: [],
+    });
+
+    expect(response.status).toBe(200);
+    const events = parseSseEvents(response.text);
+    const gptStarts = events.filter(
+      (event) =>
+        event.type === "model_start" &&
+        event.model === "gpt-5.2",
+    );
+    expect(gptStarts).toHaveLength(2);
+
+    const gptDone = events.find(
+      (event) => event.type === "model_done" && event.model === "gpt-5.2",
+    );
+    expect(gptDone).toBeTruthy();
   });
 });
