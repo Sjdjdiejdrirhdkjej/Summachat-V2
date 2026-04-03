@@ -8,14 +8,17 @@ type SseEvent = Record<string, unknown>;
 
 vi.mock("@workspace/integrations-openai-ai-server", () => ({
   openai: {},
+  tryGetOpenAiClient: () => ({}),
 }));
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
   anthropic: {},
+  tryGetAnthropicClient: () => ({}),
 }));
 
 vi.mock("@workspace/integrations-gemini-ai", () => ({
   ai: {},
+  isGeminiAvailable: () => true,
 }));
 
 const invocationCount = new Map<string, number>();

@@ -1,11 +1,34 @@
 /**
- * When `AGENTROUTER_API_KEY` is set, requests go to agentrouter.org, which uses
- * different model IDs than our app-level aliases (Replit modelfarm names).
- * Map internal IDs to upstream IDs only in that mode; Replit AI integrations
- * keep the original names.
+ * When requests actually go through agentrouter.org, model IDs differ from our
+ * app-level aliases (Replit modelfarm names). Map internal IDs to upstream IDs
+ * only in that mode; Replit AI integrations keep the original names.
+ *
+ * AgentRouter is only used as a fallback when direct AI integration keys are
+ * not configured for a given provider.
  */
 
-export function isAgentRouterUpstreamMode(): boolean {
+function hasDirectOpenAiKeys(): boolean {
+  return Boolean(
+    process.env.AI_INTEGRATIONS_OPENAI_API_KEY &&
+      process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  );
+}
+
+function hasDirectAnthropicKeys(): boolean {
+  return Boolean(
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY &&
+      process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+  );
+}
+
+function hasDirectGeminiKeys(): boolean {
+  return Boolean(
+    process.env.AI_INTEGRATIONS_GEMINI_API_KEY &&
+      process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  );
+}
+
+function isAgentRouterUpstreamMode(): boolean {
   return Boolean(process.env.AGENTROUTER_API_KEY);
 }
 
@@ -25,21 +48,21 @@ const GEMINI_AGENTROUTER: Record<string, string> = {
 };
 
 export function resolveOpenAiUpstreamModel(internalModel: string): string {
-  if (!isAgentRouterUpstreamMode()) {
+  if (hasDirectOpenAiKeys() || !isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return OPENAI_AGENTROUTER[internalModel] ?? internalModel;
 }
 
 export function resolveAnthropicUpstreamModel(internalModel: string): string {
-  if (!isAgentRouterUpstreamMode()) {
+  if (hasDirectAnthropicKeys() || !isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return ANTHROPIC_AGENTROUTER[internalModel] ?? internalModel;
 }
 
 export function resolveGeminiUpstreamModel(internalModel: string): string {
-  if (!isAgentRouterUpstreamMode()) {
+  if (hasDirectGeminiKeys() || !isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return GEMINI_AGENTROUTER[internalModel] ?? internalModel;

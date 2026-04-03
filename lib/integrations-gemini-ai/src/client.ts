@@ -4,8 +4,8 @@ import { GoogleGenAI } from "@google/genai";
  * Gemini AI client with lazy initialization.
  *
  * Resolution order:
- * 1. AGENTROUTER_API_KEY  → agentrouter.org (or AGENTROUTER_PROXY_URL)
- * 2. AI_INTEGRATIONS_GEMINI_API_KEY + AI_INTEGRATIONS_GEMINI_BASE_URL
+ * 1. AI_INTEGRATIONS_GEMINI_API_KEY + AI_INTEGRATIONS_GEMINI_BASE_URL (direct)
+ * 2. AGENTROUTER_API_KEY  → agentrouter.org (or AGENTROUTER_PROXY_URL)
  */
 
 let primaryClient: GoogleGenAI | null = null;
@@ -20,7 +20,19 @@ function getPrimaryClient(): GoogleGenAI | null {
 
   primaryInitialized = true;
 
-  // Path 1: AgentRouter
+  // Path 1: Replit AI Integrations (direct, preferred)
+  const integrationsKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const integrationsBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  if (integrationsKey && integrationsBase) {
+    primaryClient = new GoogleGenAI({
+      apiKey: integrationsKey,
+      httpOptions: { apiVersion: "", baseUrl: integrationsBase },
+    });
+    activeSource = "ai-integrations";
+    return primaryClient;
+  }
+
+  // Path 2: AgentRouter (fallback proxy)
   const agentRouterKey = process.env.AGENTROUTER_API_KEY;
   if (agentRouterKey) {
     const proxyUrl = process.env.AGENTROUTER_PROXY_URL;
@@ -33,18 +45,6 @@ function getPrimaryClient(): GoogleGenAI | null {
       httpOptions: { apiVersion: "", baseUrl },
     });
     activeSource = "agentrouter";
-    return primaryClient;
-  }
-
-  // Path 2: Replit AI Integrations
-  const integrationsKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  const integrationsBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  if (integrationsKey && integrationsBase) {
-    primaryClient = new GoogleGenAI({
-      apiKey: integrationsKey,
-      httpOptions: { apiVersion: "", baseUrl: integrationsBase },
-    });
-    activeSource = "ai-integrations";
     return primaryClient;
   }
 
