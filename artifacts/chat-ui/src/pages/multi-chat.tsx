@@ -684,13 +684,14 @@ export default function MultiChat({ chatId }: Props) {
     appStatus === "idle";
 
   return (
-    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
+    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-row overflow-hidden">
       <ChatSidebar
         collapsed={!sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
         currentChatId={chatId}
       />
 
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
       <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -808,7 +809,7 @@ export default function MultiChat({ chatId }: Props) {
         </p>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {turns.length === 0 ? (
           <div className="h-full flex items-center justify-center px-4 py-16">
             <div className="text-center space-y-2">
@@ -1263,6 +1264,7 @@ export default function MultiChat({ chatId }: Props) {
             </Button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

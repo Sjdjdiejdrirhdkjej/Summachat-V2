@@ -1443,12 +1443,13 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       (composerMode === "compare" && selectedModels.size >= 2));
 
   return (
-    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
+    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-row overflow-hidden">
       <ChatSidebar
         collapsed={!sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
       />
 
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
       <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1546,7 +1547,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {turns.length === 0 ? (
           <div className="h-full flex items-center justify-center px-4 py-16">
             <div className="text-center space-y-6 max-w-lg">
@@ -1749,6 +1750,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
             Press Ctrl+Enter to send • {composerMode === "compare" ? "Multi-model synthesis for precise answers" : composerMode === "ask" ? "Sends to single model" : "Generates an image"}
           </p>
         </div>
+      </div>
       </div>
     </div>
   );
