@@ -4,8 +4,8 @@
   "description": "Multi-Model AI Chat Application",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#030712",
-  "theme_color": "#030712",
+  "background_color": "#070b12",
+  "theme_color": "#070b12",
   "orientation": "portrait-primary",
   "icons": [
     {

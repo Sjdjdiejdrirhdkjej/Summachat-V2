@@ -101,7 +101,7 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
   return (
     <aside
       className={cn(
-        "h-full flex flex-col bg-[#1a1a1f] border-r border-white/[0.06] transition-all duration-200 ease-in-out flex-shrink-0 overflow-hidden",
+        "h-full flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 ease-in-out flex-shrink-0 overflow-hidden",
         collapsed ? "w-0 border-r-0" : "w-[260px]",
       )}
     >
@@ -112,15 +112,15 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
           onClick={() => navigate("/")}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground font-bold text-xs">
             S
           </div>
-          <span className="text-sm font-medium text-gray-200">SummaChat V2</span>
+          <span className="text-sm font-medium text-sidebar-foreground">SummaChat V2</span>
         </button>
         <button
           type="button"
           onClick={onToggle}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
+          className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80 transition-colors"
           aria-label="Collapse sidebar"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -140,7 +140,7 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
         <button
           type="button"
           onClick={handleNew}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-white/[0.08] text-gray-300 hover:bg-white/[0.06] hover:border-white/[0.12] transition-colors text-sm"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent/80 hover:border-sidebar-border transition-colors text-sm"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path
@@ -158,7 +158,7 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
       <div className="flex-1 overflow-y-auto px-2 pb-3">
         {items.length === 0 ? (
           <div className="flex items-center justify-center h-20">
-            <p className="text-xs text-gray-600">No conversations yet</p>
+            <p className="text-xs text-muted-foreground">No conversations yet</p>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -174,8 +174,8 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
                   className={cn(
                     "w-full text-left group relative rounded-lg transition-colors",
                     isCurrent
-                      ? "bg-white/[0.08] text-gray-100"
-                      : "text-gray-400 hover:bg-white/[0.04] hover:text-gray-200",
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                   )}
                 >
                   <a
@@ -195,7 +195,7 @@ export function ChatSidebar({ collapsed, onToggle, currentChatId }: Props) {
                   <button
                     type="button"
                     onClick={(e) => handleDelete(item, e)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-red-400 transition-all p-0.5 rounded"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-destructive transition-all p-0.5 rounded"
                     aria-label="Delete"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">

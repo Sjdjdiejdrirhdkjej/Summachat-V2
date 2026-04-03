@@ -21,6 +21,7 @@ import { Markdown } from "@/components/Markdown";
 import { getFingerprint } from "@/lib/fingerprint";
 import { saveChat, getChat, deriveChatTitle } from "@/lib/chat-store";
 import { ChatSidebar } from "@/components/ChatSidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { ModelId, Turn, ModelState, GeneratedImageState } from "@/types/chat";
 
 const MODELS = [
@@ -33,7 +34,7 @@ const MODELS = [
     headerClass: "bg-emerald-950/60 border-emerald-800",
     chipActive: "bg-emerald-900/60 border-emerald-500 text-emerald-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-openai.png",
   },
   {
@@ -45,7 +46,7 @@ const MODELS = [
     headerClass: "bg-orange-950/60 border-orange-800",
     chipActive: "bg-orange-900/60 border-orange-500 text-orange-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-anthropic.png",
   },
   {
@@ -57,7 +58,7 @@ const MODELS = [
     headerClass: "bg-blue-950/60 border-blue-800",
     chipActive: "bg-blue-900/60 border-blue-500 text-blue-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-gemini.png",
   },
 ] as const;
@@ -684,7 +685,7 @@ export default function MultiChat({ chatId }: Props) {
     appStatus === "idle";
 
   return (
-    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-row overflow-hidden">
+    <div className="h-[100dvh] bg-background text-foreground flex flex-row overflow-hidden">
       <ChatSidebar
         collapsed={!sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
@@ -692,13 +693,13 @@ export default function MultiChat({ chatId }: Props) {
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
+      <header className="border-b border-border px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors flex-shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
               aria-label="Open menu"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -715,25 +716,26 @@ export default function MultiChat({ chatId }: Props) {
               onClick={() => navigate("/")}
               className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
             >
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground font-bold text-sm flex-shrink-0">
                 S
               </div>
               <div className="leading-tight text-left">
                 <h1 className="text-sm font-semibold tracking-tight">
                   summachat V2
                 </h1>
-                <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
+                <p className="text-[11px] text-muted-foreground">Multi-Model Chat</p>
               </div>
             </button>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
+            <ThemeToggle />
             {appStatus === "streaming" && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-gray-700 bg-transparent text-gray-300 hover:text-white hover:bg-gray-800 h-10 min-h-[44px] px-3 sm:px-4 text-xs sm:text-xs"
+                className="border-border bg-transparent text-foreground/90 hover:text-foreground hover:bg-muted h-10 min-h-[44px] px-3 sm:px-4 text-xs sm:text-xs"
                 onClick={handleStop}
               >
                 <span className="hidden sm:inline">Stop</span>
@@ -744,7 +746,7 @@ export default function MultiChat({ chatId }: Props) {
               type="button"
               variant="ghost"
               size="sm"
-              className="text-gray-500 hover:text-gray-300 h-10 min-h-[44px] px-3 sm:px-4 text-xs sm:text-xs"
+              className="text-muted-foreground hover:text-foreground/90 h-10 min-h-[44px] px-3 sm:px-4 text-xs sm:text-xs"
               onClick={handleNew}
               disabled={appStatus === "streaming"}
             >
@@ -760,7 +762,7 @@ export default function MultiChat({ chatId }: Props) {
               <button
                 disabled={appStatus === "streaming" || imageMode}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-900/50 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 min-h-[44px]",
+                  "flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/50 text-xs font-medium text-foreground/90 transition-all hover:border-muted-foreground/40 min-h-[44px]",
                   (appStatus === "streaming" || imageMode) && "opacity-50 cursor-not-allowed",
                 )}
               >
@@ -770,7 +772,7 @@ export default function MultiChat({ chatId }: Props) {
                       key={m.id}
                       src={m.icon}
                       alt={m.provider}
-                      className="w-4 h-4 rounded-sm object-contain ring-1 ring-gray-900"
+                      className="w-4 h-4 rounded-sm object-contain ring-1 ring-background"
                     />
                   ))}
                 </div>
@@ -780,20 +782,20 @@ export default function MultiChat({ chatId }: Props) {
                 </svg>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="bg-gray-900 border-gray-700">
-              <DropdownMenuLabel className="text-gray-400 text-xs">Select models (2+)</DropdownMenuLabel>
+            <DropdownMenuContent align="start" className="bg-card border-border">
+              <DropdownMenuLabel className="text-muted-foreground text-xs">Select models (2+)</DropdownMenuLabel>
               {MODELS.map((m) => (
                 <DropdownMenuCheckboxItem
                   key={m.id}
                   checked={selectedModels.has(m.id)}
                   onCheckedChange={() => toggleModel(m.id)}
                   onSelect={(e) => e.preventDefault()}
-                  className="text-gray-200 focus:bg-gray-800 focus:text-gray-100"
+                  className="text-foreground focus:bg-muted focus:text-foreground"
                 >
                   <div className="flex items-center gap-2">
                     <img src={m.icon} alt={m.provider} className="w-4 h-4 rounded-sm object-contain" />
                     <span>{m.label}</span>
-                    <span className="text-[10px] text-gray-500">{m.provider}</span>
+                    <span className="text-[10px] text-muted-foreground">{m.provider}</span>
                   </div>
                 </DropdownMenuCheckboxItem>
               ))}
@@ -804,7 +806,7 @@ export default function MultiChat({ chatId }: Props) {
           )}
         </div>
 
-        <p className="text-[10px] text-gray-800 font-mono truncate">
+        <p className="text-[10px] text-muted-foreground font-mono truncate">
           /chat/{chatId}
         </p>
       </header>
@@ -813,8 +815,8 @@ export default function MultiChat({ chatId }: Props) {
         {turns.length === 0 ? (
           <div className="h-full flex items-center justify-center px-4 py-16">
             <div className="text-center space-y-2">
-              <p className="text-gray-400 text-sm">Start a conversation</p>
-              <p className="text-gray-600 text-xs">
+              <p className="text-muted-foreground text-sm">Start a conversation</p>
+              <p className="text-muted-foreground/80 text-xs">
                 Your message goes to all selected models at once
               </p>
             </div>
@@ -828,14 +830,14 @@ export default function MultiChat({ chatId }: Props) {
               return (
                 <div key={turn.id} className="space-y-4">
                   <div className="flex justify-end">
-                    <div className="max-w-[75%] bg-violet-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="max-w-[75%] bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
                       {turn.prompt}
                     </div>
                   </div>
 
                   <div
                     className={cn(
-                      "grid gap-px bg-gray-800 rounded-xl overflow-hidden border border-gray-800",
+                      "grid gap-px bg-border rounded-xl overflow-hidden border border-border",
                       modelList.length === 2
                         ? "grid-cols-1 sm:grid-cols-2"
                         : "grid-cols-1 sm:grid-cols-3",
@@ -865,7 +867,7 @@ export default function MultiChat({ chatId }: Props) {
                       return (
                         <div
                           key={m.id}
-                          className="flex flex-col bg-gray-950 min-h-[10rem]"
+                          className="flex flex-col bg-background min-h-[10rem]"
                         >
                           <div
                             className={cn(
@@ -878,7 +880,7 @@ export default function MultiChat({ chatId }: Props) {
                               alt={m.provider}
                               className="w-5 h-5 rounded flex-shrink-0 object-contain"
                             />
-                            <span className="text-[11px] font-medium text-gray-300">
+                            <span className="text-[11px] font-medium text-foreground/90">
                               {m.label}
                             </span>
                             {ms?.status === "streaming" ? (
@@ -887,7 +889,7 @@ export default function MultiChat({ chatId }: Props) {
                               <button
                                 type="button"
                                 onClick={toggleExpand}
-                                className="ml-auto text-gray-500 hover:text-gray-300 transition-colors p-0.5 rounded"
+                                className="ml-auto text-muted-foreground hover:text-foreground/90 transition-colors p-0.5 rounded"
                                 aria-label={isExpanded ? "Collapse" : "Expand"}
                               >
                                 <svg
@@ -928,8 +930,8 @@ export default function MultiChat({ chatId }: Props) {
                               )}
                             >
                               {!ms || ms.status === "idle" ? (
-                                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                  <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                                  <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
                                   Waiting…
                                 </div>
                               ) : ms.status === "error" ? (
@@ -940,13 +942,13 @@ export default function MultiChat({ chatId }: Props) {
                                 <div className="text-xs">
                                   <Markdown>{ms.content}</Markdown>
                                   {ms.status === "streaming" && (
-                                    <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
+                                    <span className="inline-block w-1 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                                   )}
                                 </div>
                               )}
                             </AutoScrollBox>
                             {!isExpanded && canExpand && ms?.content && (
-                              <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none" />
+                              <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
                             )}
                           </div>
                         </div>
@@ -1006,13 +1008,13 @@ export default function MultiChat({ chatId }: Props) {
 
                   <div className="flex justify-start">
                     <div className="max-w-[85%] flex gap-3">
-                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
+                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0 mt-0.5">
                         ∑
                       </div>
-                      <div className="bg-gray-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-gray-200 min-w-[120px]">
+                      <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-foreground min-w-[120px]">
                         {turn.summaryStatus === "idle" ? (
-                          <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                            <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
                             Waiting for models…
                           </span>
                         ) : turn.summaryStatus === "error" ? (
@@ -1023,7 +1025,7 @@ export default function MultiChat({ chatId }: Props) {
                           <>
                             {turn.summaryThinking && (
                               <details open className="mb-3 group">
-                                <summary className="text-[11px] text-violet-400 cursor-pointer hover:text-violet-300 select-none flex items-center gap-1.5 transition-colors font-medium">
+                                <summary className="text-[11px] text-primary cursor-pointer hover:text-primary/85 select-none flex items-center gap-1.5 transition-colors font-medium">
                                   <svg
                                     width="12"
                                     height="12"
@@ -1040,7 +1042,7 @@ export default function MultiChat({ chatId }: Props) {
                                   Reasoning
                                   {turn.summaryStatus === "streaming" &&
                                     !turn.summary && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                                     )}
                                 </summary>
                                 <AutoScrollBox
@@ -1048,12 +1050,12 @@ export default function MultiChat({ chatId }: Props) {
                                     turn.summaryStatus === "streaming" &&
                                     !turn.summary
                                   }
-                                  className="mt-2 p-3 bg-violet-950/30 border border-violet-900/50 rounded-lg text-xs text-gray-400 leading-relaxed max-h-[10rem] overflow-y-auto"
+                                  className="mt-2 p-3 bg-primary/15 border border-primary/35 rounded-lg text-xs text-muted-foreground leading-relaxed max-h-[10rem] overflow-y-auto"
                                 >
                                   <Markdown>{turn.summaryThinking}</Markdown>
                                   {turn.summaryStatus === "streaming" &&
                                     !turn.summary && (
-                                      <span className="inline-block w-1 h-3.5 bg-violet-400 ml-0.5 animate-pulse align-text-bottom" />
+                                      <span className="inline-block w-1 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                                     )}
                                 </AutoScrollBox>
                               </details>
@@ -1061,15 +1063,15 @@ export default function MultiChat({ chatId }: Props) {
                             {!turn.summary &&
                             turn.summaryStatus === "streaming" &&
                             !turn.summaryThinking ? (
-                              <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                              <span className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                                <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
                                 Thinking…
                               </span>
                             ) : !turn.summary &&
                               turn.summaryStatus === "streaming" &&
                               turn.summaryThinking ? (
-                              <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                                 Writing response…
                               </span>
                             ) : (
@@ -1077,7 +1079,7 @@ export default function MultiChat({ chatId }: Props) {
                             )}
                             {turn.summaryStatus === "streaming" &&
                               turn.summary && (
-                                <span className="inline-block w-1 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
+                                <span className="inline-block w-1 h-4 bg-muted-foreground ml-0.5 animate-pulse align-text-bottom" />
                               )}
                           </>
                         )}
@@ -1092,29 +1094,29 @@ export default function MultiChat({ chatId }: Props) {
                         <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
                           ⊛
                         </div>
-                        <div className="bg-gray-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-gray-200 min-w-[120px]">
+                        <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-foreground min-w-[120px]">
                           {turn.imageGeneration.status === "generating" && (
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse" />
-                              <span className="text-xs text-gray-400">
+                              <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+                              <span className="text-xs text-muted-foreground">
                                 Generating image
-                                {turn.imageGeneration.routingReason && <span className="ml-1 text-gray-500">— {turn.imageGeneration.routingReason}</span>}
+                                {turn.imageGeneration.routingReason && <span className="ml-1 text-muted-foreground">— {turn.imageGeneration.routingReason}</span>}
                               </span>
                             </div>
                           )}
                           {turn.imageGeneration.status === "done" && turn.imageGeneration.imageId && (
                             <div className="space-y-3">
                               <div className="flex items-center gap-2">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-300/80">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/80">
                                   Generated Image
                                 </span>
                                 {turn.imageGeneration.model && (
-                                  <span className="inline-flex items-center rounded-full border border-violet-700/70 bg-violet-900/40 px-2 py-0.5 text-[11px] font-medium text-violet-200">
+                                  <span className="inline-flex items-center rounded-full border border-primary/50 bg-primary/25 px-2 py-0.5 text-[11px] font-medium text-primary-foreground">
                                     {turn.imageGeneration.model}
                                   </span>
                                 )}
                               </div>
-                              <div className="relative rounded-lg overflow-hidden bg-gray-950 border border-gray-800">
+                              <div className="relative rounded-lg overflow-hidden bg-background border border-border">
                                 <img
                                   src={resolveApiUrl(
                                     `/api/images/${turn.imageGeneration.imageId}/content`,
@@ -1124,7 +1126,7 @@ export default function MultiChat({ chatId }: Props) {
                                 />
                               </div>
                               {turn.imageGeneration.routingReason && (
-                                <p className="text-[10px] text-gray-500">
+                                <p className="text-[10px] text-muted-foreground">
                                   Routed: {turn.imageGeneration.routingReason}
                                 </p>
                               )}
@@ -1152,7 +1154,7 @@ export default function MultiChat({ chatId }: Props) {
         )}
       </div>
 
-      <div className="border-t border-gray-800 bg-gray-900/30 px-3 sm:px-4 py-3 flex-shrink-0">
+      <div className="border-t border-border bg-muted/30 px-3 sm:px-4 py-3 flex-shrink-0">
         <div className="max-w-5xl mx-auto space-y-2">
           <div className="flex items-center gap-1 sm:gap-2">
             <button
@@ -1162,7 +1164,7 @@ export default function MultiChat({ chatId }: Props) {
                 "flex items-center gap-1.5 px-3 py-2.5 sm:px-2.5 sm:py-1 rounded-full border text-xs font-medium transition-all min-h-[44px]",
                 webSearch
                   ? "bg-sky-900/60 border-sky-500 text-sky-300"
-                  : "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+                  : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
                 appStatus === "streaming" && "opacity-50 cursor-not-allowed",
               )}
             >
@@ -1196,8 +1198,8 @@ export default function MultiChat({ chatId }: Props) {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2.5 sm:px-2.5 sm:py-1 rounded-full border text-xs font-medium transition-all min-h-[44px]",
                 imageMode
-                  ? "bg-violet-900/60 border-violet-500 text-violet-300"
-                  : "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+                  ? "bg-primary/35 border-primary text-primary"
+                  : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
                 appStatus === "streaming" && "opacity-50 cursor-not-allowed",
               )}
             >
@@ -1232,7 +1234,7 @@ export default function MultiChat({ chatId }: Props) {
                   }
                 }}
                 placeholder="Message all models…  (Ctrl+Enter to send)"
-                className="bg-gray-950/60 border-gray-800 text-gray-100 placeholder:text-gray-600 resize-none min-h-[48px] max-h-[120px] focus:border-violet-500 focus:ring-violet-500/20 text-base sm:text-sm"
+                className="bg-background/60 border-border text-foreground placeholder:text-muted-foreground/80 resize-none min-h-[48px] max-h-[120px] focus:border-primary focus:ring-primary/20 text-base sm:text-sm"
                 disabled={appStatus === "streaming"}
                 style={{
                   paddingBottom: "12px",
@@ -1245,7 +1247,7 @@ export default function MultiChat({ chatId }: Props) {
             <Button
               onClick={handleSubmit}
               disabled={!canSend}
-              className="bg-violet-600 hover:bg-violet-700 text-white px-4 sm:px-5 h-12 min-h-[48px] flex-shrink-0 text-sm"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 sm:px-5 h-12 min-h-[48px] flex-shrink-0 text-sm"
             >
               <svg
                 width="16"

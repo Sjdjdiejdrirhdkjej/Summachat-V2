@@ -5,7 +5,10 @@ import { getFingerprint } from "@/lib/fingerprint";
 import { listChats, deleteChat } from "@/lib/chat-store";
 import { listSessions, deleteSession } from "@/lib/session-store";
 import { ChatSidebar } from "@/components/ChatSidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type HomeItem = {
   id: string;
@@ -33,7 +36,9 @@ function buildHomeItems(fingerprint: string): HomeItem[] {
     updatedAt: s.updatedAt,
     source: "session",
   }));
-  return [...chatItems, ...sessionItems].sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...chatItems, ...sessionItems].sort(
+    (a, b) => b.updatedAt - a.updatedAt,
+  );
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -51,7 +56,7 @@ function formatDate(ts: number) {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffMs / 86400000);
+  const diffDays = Math.floor(diffMs / MS_PER_DAY);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
@@ -76,8 +81,6 @@ export default function Home() {
     navigate(`/session/${id}`);
   };
 
-
-
   const handleDeleteItem = (item: HomeItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (item.source === "session") {
@@ -89,111 +92,134 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-gray-950 text-gray-100 flex flex-col">
-      <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+    <div className="h-[100dvh] bg-background text-foreground flex flex-row overflow-hidden">
+      <ChatSidebar
+        collapsed={!sidebarOpen}
+        onToggle={() => setSidebarOpen((v) => !v)}
+      />
 
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors flex-shrink-0"
-            aria-label="Open menu"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M2 4h12M2 8h12M2 12h12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
-            S
-          </div>
-          <div>
-            <h1 className="text-sm font-semibold">summachat V2</h1>
-            <p className="text-[11px] text-gray-500">Multi-Model Chat</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleNew}
-            className="bg-violet-600 hover:bg-violet-700 text-white px-4 h-9 text-sm"
-          >
-            New Session
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 py-8">
-        {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="text-center space-y-2">
-              <p className="text-gray-400 text-sm">No chats yet</p>
-              <p className="text-gray-600 text-xs">
-                Start a new conversation to get going
-              </p>
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="border-b border-border px-4 sm:px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+              aria-label="Open menu"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M2 4h12M2 8h12M2 12h12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground font-bold text-sm">
+              S
             </div>
+            <div>
+              <h1 className="text-sm font-semibold">SummaChat V2</h1>
+              <p className="text-[11px] text-muted-foreground">Multi-Model Chat</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button
               onClick={handleNew}
-              className="bg-violet-600 hover:bg-violet-700 text-white px-6"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 h-9 text-sm"
             >
-              Start your first chat
+              New Session
             </Button>
           </div>
-        ) : (
-          <div className="space-y-2">
-            <h2 className="text-xs text-gray-500 font-medium mb-4 tracking-wide uppercase">
-              Recent chats
-            </h2>
-            {items.map((item) => (
-              <button
-                key={`${item.source}-${item.id}`}
-                type="button"
-                onClick={() => navigate(item.source === "session" ? `/session/${item.id}` : `/chat/${item.id}`)}
-                className="w-full text-left group flex items-start gap-3 p-3 rounded-xl border border-gray-800 bg-gray-900/30 hover:bg-gray-900/70 hover:border-gray-700 transition-all"
-              >
-                <div className="flex gap-0.5 mt-0.5 flex-shrink-0">
-                  {item.selectedModels.map((id) => (
-                    <span
-                      key={id}
-                      className={cn(
-                        "w-3 h-3 rounded-sm flex items-center justify-center text-white text-[7px] font-bold",
-                        MODEL_COLORS[id] ?? "bg-gray-600",
-                      )}
-                    >
-                      {MODEL_ICONS[id] ?? "?"}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-200 truncate">{item.title}</p>
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    {item.turnCount}{" "}
-                    {item.turnCount === 1 ? "turn" : "turns"} ·{" "}
-                    {formatDate(item.updatedAt)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteItem(item, e)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-                  aria-label="Delete chat"
-                >
-                  ✕
-                </button>
-              </button>
-            ))}
-          </div>
-        )}
+        </header>
 
-        {fp && (
-          <p className="text-center text-[10px] text-gray-800 mt-8">
-            Session ID: {fp}
-          </p>
-        )}
+        <div className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 pb-8 pt-4">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-4">
+              <div className="text-center space-y-2">
+                <p className="text-muted-foreground text-sm">No chats yet</p>
+                <p className="text-muted-foreground/80 text-xs">
+                  Start a new conversation to get going
+                </p>
+              </div>
+              <Button
+                onClick={handleNew}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-6"
+              >
+                Start your first chat
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <h2 className="text-xs text-muted-foreground font-medium mb-4 tracking-wide uppercase">
+                Recent chats
+              </h2>
+              {items.map((item) => (
+                <div
+                  key={`${item.source}-${item.id}`}
+                  className="w-full text-left group relative rounded-xl border border-border bg-muted/30 hover:bg-card/70 hover:border-border transition-all"
+                >
+                  <a
+                    href={
+                      item.source === "session"
+                        ? `/session/${item.id}`
+                        : `/chat/${item.id}`
+                    }
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(
+                        item.source === "session"
+                          ? `/session/${item.id}`
+                          : `/chat/${item.id}`,
+                      );
+                    }}
+                    className="flex w-full items-start gap-3 p-3 pr-10"
+                  >
+                    <div className="flex gap-0.5 mt-0.5 flex-shrink-0">
+                      {item.selectedModels.map((id) => (
+                        <span
+                          key={id}
+                          className={cn(
+                            "w-3 h-3 rounded-sm flex items-center justify-center text-primary-foreground text-[7px] font-bold",
+                            MODEL_COLORS[id] ?? "bg-muted-foreground",
+                          )}
+                        >
+                          {MODEL_ICONS[id] ?? "?"}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">
+                        {item.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground/80 mt-0.5">
+                        {item.turnCount}{" "}
+                        {item.turnCount === 1 ? "turn" : "turns"} ·{" "}
+                        {formatDate(item.updatedAt)}
+                      </p>
+                    </div>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteItem(item, e)}
+                    className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 text-muted-foreground/80 hover:text-red-400 transition-all text-xs px-1.5 py-0.5 rounded"
+                    aria-label="Delete chat"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {fp && (
+            <p className="text-center text-[10px] text-muted-foreground mt-8">
+              Session ID: {fp}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

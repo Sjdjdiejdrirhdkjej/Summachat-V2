@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { getFingerprint } from "@/lib/fingerprint";
 import { ChatSidebar } from "@/components/ChatSidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { ModelId, ModelState, SearchResult } from "@/types/chat";
 import {
   getOrCreateAnonymousOwnerId,
@@ -51,7 +52,7 @@ const MODELS = [
     headerClass: "bg-emerald-950/60 border-emerald-800",
     chipActive: "bg-emerald-900/60 border-emerald-500 text-emerald-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-openai.png",
   },
   {
@@ -64,7 +65,7 @@ const MODELS = [
     headerClass: "bg-orange-950/60 border-orange-800",
     chipActive: "bg-orange-900/60 border-orange-500 text-orange-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-anthropic.png",
   },
   {
@@ -77,7 +78,7 @@ const MODELS = [
     headerClass: "bg-blue-950/60 border-blue-800",
     chipActive: "bg-blue-900/60 border-blue-500 text-blue-300",
     chipInactive:
-      "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+      "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
     icon: "/logo-gemini.png",
   },
 ] as const;
@@ -200,8 +201,8 @@ function ModeChip({
       className={cn(
         "flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-medium transition-all min-h-[40px]",
         active
-          ? "bg-violet-600 border-violet-500 text-white"
-          : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300",
+          ? "bg-primary border-primary text-primary-foreground"
+          : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground/90",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
@@ -228,7 +229,7 @@ function SingleModelDropdown({
         <button
           disabled={disabled}
           className={cn(
-            "flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-900/50 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 min-h-[40px]",
+            "flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/50 text-xs font-medium text-foreground/90 transition-all hover:border-muted-foreground/40 min-h-[40px]",
             disabled && "opacity-50 cursor-not-allowed",
           )}
         >
@@ -243,18 +244,18 @@ function SingleModelDropdown({
           </svg>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
+      <DropdownMenuContent align="end" className="bg-card border-border">
         <DropdownMenuRadioGroup value={selectedModel} onValueChange={(v) => onChange(v as ModelId)}>
           {MODELS.map((m) => (
             <DropdownMenuRadioItem
               key={m.id}
               value={m.id}
-              className="text-gray-200 focus:bg-gray-800 focus:text-gray-100"
+              className="text-foreground focus:bg-muted focus:text-foreground"
             >
               <div className="flex items-center gap-2">
                 <img src={m.icon} alt={m.provider} className="w-4 h-4 rounded-sm object-contain" />
                 <span>{m.label}</span>
-                <span className="text-[10px] text-gray-500">{m.provider}</span>
+                <span className="text-[10px] text-muted-foreground">{m.provider}</span>
               </div>
             </DropdownMenuRadioItem>
           ))}
@@ -281,7 +282,7 @@ function MultiModelDropdown({
           <button
             disabled={disabled}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-900/50 text-xs font-medium text-gray-300 transition-all hover:border-gray-600 min-h-[40px]",
+              "flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/50 text-xs font-medium text-foreground/90 transition-all hover:border-muted-foreground/40 min-h-[40px]",
               disabled && "opacity-50 cursor-not-allowed",
             )}
           >
@@ -291,7 +292,7 @@ function MultiModelDropdown({
                   key={m.id}
                   src={m.icon}
                   alt={m.provider}
-                  className="w-4 h-4 rounded-sm object-contain ring-1 ring-gray-900"
+                  className="w-4 h-4 rounded-sm object-contain ring-1 ring-background"
                 />
               ))}
             </div>
@@ -301,20 +302,20 @@ function MultiModelDropdown({
             </svg>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
-          <DropdownMenuLabel className="text-gray-400 text-xs">Select models (2+)</DropdownMenuLabel>
+        <DropdownMenuContent align="end" className="bg-card border-border">
+          <DropdownMenuLabel className="text-muted-foreground text-xs">Select models (2+)</DropdownMenuLabel>
           {MODELS.map((m) => (
             <DropdownMenuCheckboxItem
               key={m.id}
               checked={selectedModels.has(m.id)}
               onCheckedChange={() => onToggle(m.id)}
               onSelect={(e) => e.preventDefault()}
-              className="text-gray-200 focus:bg-gray-800 focus:text-gray-100"
+              className="text-foreground focus:bg-muted focus:text-foreground"
             >
               <div className="flex items-center gap-2">
                 <img src={m.icon} alt={m.provider} className="w-4 h-4 rounded-sm object-contain" />
                 <span>{m.label}</span>
-                <span className="text-[10px] text-gray-500">{m.provider}</span>
+                <span className="text-[10px] text-muted-foreground">{m.provider}</span>
               </div>
             </DropdownMenuCheckboxItem>
           ))}
@@ -343,7 +344,7 @@ function TextTurnCard({
   if (!model) return null;
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+    <div className="bg-muted/50 border border-border rounded-xl overflow-hidden">
       <div
         className={cn(
           "flex items-center gap-2 px-3 py-2 border-b",
@@ -355,7 +356,7 @@ function TextTurnCard({
           alt={model.provider}
           className="w-5 h-5 rounded object-contain"
         />
-        <span className="text-[11px] font-medium text-gray-300">
+        <span className="text-[11px] font-medium text-foreground/90">
           {model.label}
         </span>
         {turn.status === "streaming" && (
@@ -379,8 +380,8 @@ function TextTurnCard({
           )}
         >
           {!turn.modelState || turn.modelState.status === "idle" ? (
-            <div className="flex items-center gap-1.5 text-xs text-gray-600">
-              <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+              <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
               Waiting…
             </div>
           ) : turn.modelState.status === "error" ? (
@@ -388,16 +389,16 @@ function TextTurnCard({
               {turn.modelState.error ?? "Error"}
             </p>
           ) : (
-            <div className="text-sm text-gray-200">
+            <div className="text-sm text-foreground">
               <Markdown>{turn.modelState.content}</Markdown>
               {turn.status === "streaming" && (
-                <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
+                <span className="inline-block w-1 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
               )}
             </div>
           )}
         </AutoScrollBox>
         {!isExpanded && turn.modelState.content && (
-          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-gray-900 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
         )}
       </div>
     </div>
@@ -425,7 +426,7 @@ function CompareTurnCard({
   return (
     <div
       className={cn(
-        "grid gap-px bg-gray-800 rounded-xl overflow-hidden border border-gray-800",
+        "grid gap-px bg-border rounded-xl overflow-hidden border border-border",
         modelList.length === 2
           ? "grid-cols-1 sm:grid-cols-2"
           : "grid-cols-1 sm:grid-cols-3",
@@ -453,7 +454,7 @@ function CompareTurnCard({
         };
 
         return (
-          <div key={m.id} className="flex flex-col bg-gray-950 min-h-[10rem]">
+          <div key={m.id} className="flex flex-col bg-background min-h-[10rem]">
             <div
               className={cn(
                 "flex items-center gap-2 px-3 py-2 border-b flex-shrink-0",
@@ -465,7 +466,7 @@ function CompareTurnCard({
                 alt={m.provider}
                 className="w-5 h-5 rounded object-contain"
               />
-              <span className="text-[11px] font-medium text-gray-300">
+              <span className="text-[11px] font-medium text-foreground/90">
                 {m.label}
               </span>
               {ms?.status === "streaming" ? (
@@ -474,7 +475,7 @@ function CompareTurnCard({
                 <button
                   type="button"
                   onClick={toggleExpand}
-                  className="ml-auto text-gray-500 hover:text-gray-300 transition-colors p-0.5 rounded"
+                  className="ml-auto text-muted-foreground hover:text-foreground/90 transition-colors p-0.5 rounded"
                 >
                   <svg
                     width="12"
@@ -508,8 +509,8 @@ function CompareTurnCard({
                 )}
               >
                 {!ms || ms.status === "idle" ? (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                    <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                    <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
                     Waiting…
                   </div>
                 ) : ms.status === "error" ? (
@@ -518,13 +519,13 @@ function CompareTurnCard({
                   <div className="text-xs">
                     <Markdown>{ms.content}</Markdown>
                     {ms.status === "streaming" && (
-                      <span className="inline-block w-1 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-text-bottom" />
+                      <span className="inline-block w-1 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                     )}
                   </div>
                 )}
               </AutoScrollBox>
               {!isExpanded && canExpand && ms?.content && (
-                <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none" />
+                <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
               )}
             </div>
           </div>
@@ -590,13 +591,13 @@ function CompareSummarySection({ turn }: { turn: CompareTurn }) {
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] flex gap-3">
-        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
+        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0 mt-0.5">
           ∑
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-gray-200 min-w-[120px]">
+        <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-foreground min-w-[120px]">
           {turn.summaryStatus === "idle" ? (
-            <span className="flex items-center gap-1.5 text-xs text-gray-600">
-              <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+              <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
               Waiting for models…
             </span>
           ) : turn.summaryStatus === "error" ? (
@@ -607,7 +608,7 @@ function CompareSummarySection({ turn }: { turn: CompareTurn }) {
             <>
               {turn.summaryThinking && (
                 <details open className="mb-3 group">
-                  <summary className="text-[11px] text-violet-400 cursor-pointer hover:text-violet-300 select-none flex items-center gap-1.5 transition-colors font-medium">
+                  <summary className="text-[11px] text-primary cursor-pointer hover:text-primary/85 select-none flex items-center gap-1.5 transition-colors font-medium">
                     <svg
                       width="12"
                       height="12"
@@ -623,35 +624,35 @@ function CompareSummarySection({ turn }: { turn: CompareTurn }) {
                     </svg>
                     Reasoning
                     {turn.summaryStatus === "streaming" && !turn.summary && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                     )}
                   </summary>
                   <AutoScrollBox
                     streaming={turn.summaryStatus === "streaming" && !turn.summary}
-                    className="mt-2 p-3 bg-violet-950/30 border border-violet-900/50 rounded-lg text-xs text-gray-400 leading-relaxed max-h-[10rem] overflow-y-auto"
+                    className="mt-2 p-3 bg-primary/15 border border-primary/35 rounded-lg text-xs text-muted-foreground leading-relaxed max-h-[10rem] overflow-y-auto"
                   >
                     <Markdown>{turn.summaryThinking}</Markdown>
                     {turn.summaryStatus === "streaming" && !turn.summary && (
-                      <span className="inline-block w-1 h-3.5 bg-violet-400 ml-0.5 animate-pulse align-text-bottom" />
+                      <span className="inline-block w-1 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                     )}
                   </AutoScrollBox>
                 </details>
               )}
               {!turn.summary && turn.summaryStatus === "streaming" && !turn.summaryThinking ? (
-                <span className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <span className="w-3 h-3 rounded-full border-2 border-gray-700 border-t-gray-500 animate-spin" />
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                  <span className="w-3 h-3 rounded-full border-2 border-border border-t-primary animate-spin" />
                   Thinking…
                 </span>
               ) : !turn.summary && turn.summaryStatus === "streaming" && turn.summaryThinking ? (
-                <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                   Writing response…
                 </span>
               ) : (
                 <Markdown>{turn.summary}</Markdown>
               )}
               {turn.summaryStatus === "streaming" && turn.summary && (
-                <span className="inline-block w-1 h-4 bg-gray-400 ml-0.5 animate-pulse align-text-bottom" />
+                <span className="inline-block w-1 h-4 bg-muted-foreground ml-0.5 animate-pulse align-text-bottom" />
               )}
             </>
           )}
@@ -679,8 +680,8 @@ function ImageTurnCard({
   }, [turn.status]);
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 bg-violet-950/30">
+    <div className="bg-muted/50 border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/15">
         <svg
           width="14"
           height="14"
@@ -688,25 +689,25 @@ function ImageTurnCard({
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          className="text-violet-400"
+          className="text-primary"
         >
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <circle cx="8.5" cy="8.5" r="1.5" />
           <path d="M21 15-5-5-4.5 4.5" />
         </svg>
-        <span className="text-[11px] font-medium text-violet-300">
+        <span className="text-[11px] font-medium text-primary">
           AI Generated Image
         </span>
         {turn.provider && (
           <Badge
             variant="outline"
-            className="text-[10px] border-violet-700 text-violet-300"
+            className="text-[10px] border-primary/50 text-primary"
           >
             {turn.provider}
           </Badge>
         )}
         {turn.status === "generating" && (
-          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
         )}
       </div>
       <div className="p-4">
@@ -725,18 +726,18 @@ function ImageTurnCard({
             )}
           </div>
         ) : turn.status === "generating" || loading ? (
-          <div className="flex items-center justify-center min-h-[256px] bg-gray-950/50 rounded-xl">
+          <div className="flex items-center justify-center min-h-[256px] bg-background/50 rounded-xl">
             <div className="text-center">
-              <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-400 text-sm">Generating image…</p>
-              <p className="text-gray-600 text-xs mt-1">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">Generating image…</p>
+              <p className="text-muted-foreground/80 text-xs mt-1">
                 {turn.enhancedPrompt ?? turn.originalPrompt}
               </p>
             </div>
           </div>
         ) : resolvedUrl ? (
           <div className="space-y-3">
-            <div className="relative rounded-xl overflow-hidden bg-gray-950">
+            <div className="relative rounded-xl overflow-hidden bg-background">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={resolvedUrl}
@@ -789,17 +790,17 @@ function ImageTurnCard({
             </div>
             {turn.enhancedPrompt && (
               <details className="mt-2">
-                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground">
                   View enhanced prompt
                 </summary>
-                <p className="text-xs text-gray-400 mt-2 p-2 bg-gray-900/50 rounded">
+                <p className="text-xs text-muted-foreground mt-2 p-2 bg-muted/50 rounded">
                   {turn.enhancedPrompt}
                 </p>
               </details>
             )}
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-500 text-sm">
+          <div className="text-center py-8 text-muted-foreground text-sm">
             No image to display
           </div>
         )}
@@ -1594,20 +1595,20 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       (composerMode === "compare" && selectedModels.size >= 2));
 
   return (
-    <div className="h-[100dvh] bg-gray-950 text-gray-100 flex flex-row overflow-hidden">
+    <div className="h-[100dvh] bg-background text-foreground flex flex-row overflow-hidden">
       <ChatSidebar
         collapsed={!sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-      <header className="border-b border-gray-800 px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
+      <header className="border-b border-border px-4 sm:px-6 py-3 flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -1618,24 +1619,25 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
               onClick={() => navigate("/")}
               className="flex items-center gap-2.5 hover:opacity-80"
             >
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-sky-600 flex items-center justify-center text-primary-foreground font-bold text-sm">
                 S
               </div>
               <div className="leading-tight text-left">
                 <h1 className="text-sm font-semibold">Summachat</h1>
-                <p className="text-[11px] text-gray-500">AI Workspace</p>
+                <p className="text-[11px] text-muted-foreground">AI Workspace</p>
               </div>
             </button>
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {appStatus === "streaming" && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={handleStop}
-                className="border-gray-700 bg-transparent text-gray-300 hover:text-white hover:bg-gray-800 h-10"
+                className="border-border bg-transparent text-foreground/90 hover:text-foreground hover:bg-muted h-10"
               >
                 <span className="hidden sm:inline">Stop</span>
                 <span className="sm:hidden">■</span>
@@ -1647,7 +1649,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
               size="sm"
               onClick={handleNew}
               disabled={appStatus === "streaming"}
-              className="text-gray-500 hover:text-gray-300 h-10"
+              className="text-muted-foreground hover:text-foreground/90 h-10"
             >
               <span className="hidden sm:inline">New Session</span>
               <span className="sm:hidden">+</span>
@@ -1711,8 +1713,8 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                   className={cn(
                     "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
                     composerMode === "ask"
-                      ? "bg-violet-600/20 border-violet-500 text-white"
-                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                      ? "bg-primary/20 border-primary text-primary"
+                      : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground/90"
                   )}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1729,8 +1731,8 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                   className={cn(
                     "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
                     composerMode === "compare"
-                      ? "bg-violet-600/20 border-violet-500 text-white"
-                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                      ? "bg-primary/20 border-primary text-primary"
+                      : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground/90"
                   )}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1748,8 +1750,8 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                   className={cn(
                     "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px]",
                     composerMode === "image"
-                      ? "bg-violet-600/20 border-violet-500 text-white"
-                      : "bg-gray-900/30 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                      ? "bg-primary/20 border-primary text-primary"
+                      : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground/90"
                   )}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1763,12 +1765,12 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
 
               {/* Dynamic content based on mode */}
               <div className="space-y-2">
-                <p className="text-gray-300 text-lg font-medium">
+                <p className="text-foreground/90 text-lg font-medium">
                   {composerMode === "ask" && "Ask a question"}
                   {composerMode === "compare" && "Precise Mode"}
                   {composerMode === "image" && "Generate an image"}
                 </p>
-                <p className="text-gray-500 text-sm">
+                <p className="text-muted-foreground text-sm">
                   {composerMode === "ask" && "Get answers from GPT, Claude, or Gemini with optional web search."}
                   {composerMode === "compare" && "Uses multiple models to generate precise, near-perfect answers."}
                   {composerMode === "image" && "Describe what you want to see and let AI create it for you."}
@@ -1782,7 +1784,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
               <div key={turn.id} className="space-y-4">
                 {/* User prompt */}
                 <div className="flex justify-end">
-                  <div className="max-w-[75%] bg-violet-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+                  <div className="max-w-[75%] bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
                     {turn.prompt}
                   </div>
                 </div>
@@ -1826,7 +1828,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       </div>
 
       {/* Composer */}
-      <div className="border-t border-gray-800 bg-gray-900/30 px-3 sm:px-4 py-3 flex-shrink-0">
+      <div className="border-t border-border bg-muted/30 px-3 sm:px-4 py-3 flex-shrink-0">
         <div className="max-w-4xl mx-auto space-y-3">
           {/* Web search toggle for text modes */}
           {(composerMode === "ask" || composerMode === "compare") && (
@@ -1839,7 +1841,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                   "flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-medium transition-all",
                   webSearch
                     ? "bg-sky-900/60 border-sky-500 text-sky-300"
-                    : "bg-gray-900/30 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+                    : "bg-muted/30 border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-muted-foreground",
                   appStatus === "streaming" && "opacity-50 cursor-not-allowed",
                 )}
               >
@@ -1872,7 +1874,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                     ? "Ask all models to answer..."
                     : "Ask a question..."
                 }
-                className="bg-gray-950/60 border-gray-800 text-gray-100 placeholder:text-gray-600 resize-none min-h-[48px] max-h-[120px] focus:border-violet-500 focus:ring-violet-500/20 text-base"
+                className="bg-background/60 border-border text-foreground placeholder:text-muted-foreground/80 resize-none min-h-[48px] max-h-[120px] focus:border-primary focus:ring-primary/20 text-base"
                 disabled={appStatus === "streaming"}
                 style={{ paddingBottom: "12px", paddingTop: "12px", fieldSizing: "content", minHeight: "48px" }}
               />
@@ -1880,7 +1882,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
             <Button
               onClick={handleSubmit}
               disabled={!canSend}
-              className="bg-violet-600 hover:bg-violet-700 text-white px-4 sm:px-5 h-12 min-h-[48px] flex-shrink-0"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 sm:px-5 h-12 min-h-[48px] flex-shrink-0"
             >
               {composerMode === "image" ? (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1897,7 +1899,7 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
           </div>
 
           {/* Hint text */}
-          <p className="text-[10px] text-gray-600 text-center">
+          <p className="text-[10px] text-muted-foreground/80 text-center">
             Press Ctrl+Enter to send • {composerMode === "compare" ? "Multi-model synthesis for precise answers" : composerMode === "ask" ? "Sends to single model" : "Generates an image"}
           </p>
         </div>

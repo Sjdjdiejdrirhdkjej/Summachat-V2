@@ -2,8 +2,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-document.documentElement.classList.toggle(
-  "dark",
-  window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false,
-);
+/* Initial `dark` class is set by inline script in index.html (reads localStorage + system).
+ * ThemeProvider from next-themes owns updates after mount. */
 createRoot(document.getElementById("root")!).render(<App />);
