@@ -37,6 +37,7 @@ import {
   type UnifiedTurn,
   type ComposerMode,
 } from "@/lib/session-store";
+import { shouldApplyBlankDefaultsForNewSession } from "@/lib/unified-session-hydration";
 
 // Model definitions
 const MODELS = [
@@ -829,6 +830,10 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
 
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const turnsRef = useRef(turns);
+  const promptRef = useRef(prompt);
+  turnsRef.current = turns;
+  promptRef.current = prompt;
 
   // Check for mobile
   useEffect(() => {
@@ -842,20 +847,40 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
   useEffect(() => {
     getFingerprint().then((fingerprint) => {
       setFp(fingerprint);
-      // Load existing session from storage
       const stored = getSession(sessionId);
       if (stored && stored.fingerprint === fingerprint) {
         setTurns(stored.turns);
         setComposerMode(stored.composerMode);
         setSelectedModel(stored.selectedModel);
         setSelectedModels(new Set(stored.selectedModels));
-      } else {
+        return;
+      }
+      if (stored && stored.fingerprint !== fingerprint) {
         setTurns([]);
         setComposerMode("ask");
         setSelectedModel("gpt-5.2");
-        setSelectedModels(new Set(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[]));
+        setSelectedModels(
+          new Set(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[]),
+        );
         setPrompt("");
+        return;
       }
+      // New session: fingerprint can resolve after the user already typed or sent — do not reset.
+      if (
+        !shouldApplyBlankDefaultsForNewSession({
+          turnCount: turnsRef.current.length,
+          promptTrimmedLength: promptRef.current.trim().length,
+        })
+      ) {
+        return;
+      }
+      setTurns([]);
+      setComposerMode("ask");
+      setSelectedModel("gpt-5.2");
+      setSelectedModels(
+        new Set(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"] as ModelId[]),
+      );
+      setPrompt("");
     });
   }, [sessionId]);
 
@@ -1300,8 +1325,28 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
         signal: abortRef.current.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Server error: ${response.status}`);
+      if (!response.ok) {
+        let detail = `Server error: ${response.status}`;
+        try {
+          const ct = response.headers.get("content-type") ?? "";
+          if (ct.includes("application/json")) {
+            const bodyJson = (await response.json()) as {
+              error?: string;
+              message?: string;
+            };
+            detail = bodyJson.message ?? bodyJson.error ?? detail;
+          } else {
+            const text = await response.text();
+            if (text.trim()) detail = text.trim().slice(0, 400);
+          }
+        } catch {
+          /* ignore body parse errors */
+        }
+        throw new Error(detail);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body from server");
       }
 
       const reader = response.body.getReader();
@@ -1323,14 +1368,120 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
       }
 
       setTurns((prev) =>
-        prev.map((t) => (t.id === turnId ? { ...t, status: "done" } : t)),
+        prev.map((t) => {
+          if (t.id !== turnId) return t;
+          if (t.type === "text") {
+            if (t.modelState.status === "idle") {
+              return {
+                ...t,
+                status: "error",
+                modelState: {
+                  content: "",
+                  status: "error",
+                  error:
+                    "No assistant response was received. For local dev, run the API server and check the Vite proxy (API_SERVER_URL).",
+                },
+              };
+            }
+            if (t.status === "error") return t;
+            return {
+              ...t,
+              status: "done",
+              modelState: { ...t.modelState, status: "done" },
+            };
+          }
+          if (t.type === "compare") {
+            const models = { ...t.models };
+            for (const id of t.selectedModels) {
+              const ms = models[id];
+              if (ms?.status === "idle") {
+                models[id] = {
+                  content: "",
+                  status: "error",
+                  error: MISSING_MODEL_TERMINAL_ERROR,
+                };
+              }
+            }
+            return { ...t, status: "done", models };
+          }
+          return t;
+        }),
       );
       setAppStatus("idle");
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
+        setTurns((prev) =>
+          prev.map((t) => {
+            if (t.id !== turnId) return t;
+            if (t.type === "text") {
+              return {
+                ...t,
+                status: "error",
+                modelState: {
+                  ...t.modelState,
+                  status: "error",
+                  error: "Generation stopped.",
+                },
+              };
+            }
+            if (t.type === "compare") {
+              const models = { ...t.models };
+              for (const id of t.selectedModels) {
+                const ms = models[id];
+                if (ms?.status === "idle" || ms?.status === "streaming") {
+                  models[id] = {
+                    content: ms?.content ?? "",
+                    status: "error",
+                    error: "Stopped.",
+                  };
+                }
+              }
+              return {
+                ...t,
+                models,
+                moderatorStatus:
+                  t.moderatorStatus === "streaming" ? "error" : t.moderatorStatus,
+                moderatorError:
+                  t.moderatorStatus === "streaming"
+                    ? "Stopped."
+                    : t.moderatorError,
+                summaryStatus:
+                  t.summaryStatus === "streaming" ? "error" : t.summaryStatus,
+                summaryError:
+                  t.summaryStatus === "streaming" ? "Stopped." : t.summaryError,
+              };
+            }
+            return t;
+          }),
+        );
         setAppStatus("idle");
         return;
       }
+      const message = err instanceof Error ? err.message : "Request failed";
+      setTurns((prev) =>
+        prev.map((t) => {
+          if (t.id !== turnId) return t;
+          if (t.type === "text") {
+            return {
+              ...t,
+              status: "error",
+              modelState: {
+                ...t.modelState,
+                status: "error",
+                error: message,
+              },
+            };
+          }
+          if (t.type === "compare") {
+            return {
+              ...t,
+              summaryStatus: "error",
+              summaryError: message,
+            };
+          }
+          return t;
+        }),
+      );
       setAppStatus("idle");
     }
   }, [prompt, appStatus, composerMode, selectedModel, selectedModels, turns, webSearch]);
@@ -1709,10 +1860,10 @@ export default function UnifiedWorkspace({ sessionId }: Props) {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
+                  if (e.key !== "Enter") return;
+                  if (e.shiftKey) return;
+                  e.preventDefault();
+                  if (canSend) handleSubmit();
                 }}
                 placeholder={
                   composerMode === "image"

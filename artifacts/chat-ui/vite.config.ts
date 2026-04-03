@@ -55,6 +55,9 @@ export default defineConfig({
       "/api": {
         target: process.env.API_SERVER_URL ?? "http://127.0.0.1:8080",
         changeOrigin: true,
+        // Long-lived SSE (chat / multi-chat); default proxy timeouts can cut streams.
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
     fs: {
