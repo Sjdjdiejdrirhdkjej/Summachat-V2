@@ -1,30 +1,28 @@
 /**
- * Fail Vite production builds on Vercel when the chat UI would call same-origin
- * `/api/*` (static hosting has no API → NOT_FOUND). See `resolveApiUrl` in
- * `src/lib/api-base.ts`.
+ * Build-time guard: when building for production on Vercel, ensure the chat UI
+ * knows where to reach the API server.
  *
- * Set `VITE_API_ORIGIN` in the Vercel project (Production + Preview). If `/api` is
- * routed on the same host (e.g. edge rewrite), set `VITE_ALLOW_SAME_ORIGIN_API=1`.
+ * - If `VITE_ALLOW_SAME_ORIGIN_API` is set, same-origin `/api` is assumed
+ *   (API serverless function is co-deployed on the same Vercel project).
+ * - Otherwise, `VITE_API_ORIGIN` must be set so the UI can reach a remote API.
  */
 export function assertVercelProductionApiOrigin(
   mode: string,
   env: NodeJS.ProcessEnv,
 ): void {
-  if (mode !== "production") {
-    return;
+  if (mode !== "production") return;
+
+  const allowSameOrigin = env["VITE_ALLOW_SAME_ORIGIN_API"]?.trim();
+  if (allowSameOrigin) return;
+
+  const apiOrigin = env["VITE_API_ORIGIN"]?.trim();
+  if (apiOrigin) return;
+
+  if (env["VERCEL"]) {
+    throw new Error(
+      "Vercel production build requires VITE_API_ORIGIN or VITE_ALLOW_SAME_ORIGIN_API=1. " +
+        "Set VITE_ALLOW_SAME_ORIGIN_API=1 if the API is co-deployed on the same project, " +
+        "or set VITE_API_ORIGIN to the API server URL.",
+    );
   }
-  if (env["VERCEL"] !== "1") {
-    return;
-  }
-  if (env["VITE_API_ORIGIN"]?.trim()) {
-    return;
-  }
-  if (env["VITE_ALLOW_SAME_ORIGIN_API"] === "1") {
-    return;
-  }
-  throw new Error(
-    "Chat UI: On Vercel, set VITE_API_ORIGIN to your API origin (no trailing slash), " +
-      "e.g. https://api.example.com, so /api requests do not hit the static host (NOT_FOUND). " +
-      "If /api is proxied on the same host, set VITE_ALLOW_SAME_ORIGIN_API=1 for this build.",
-  );
 }

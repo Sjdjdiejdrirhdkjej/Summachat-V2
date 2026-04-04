@@ -1,1 +1,41 @@
-modules = ["nodejs-20"]
+modules = ["nodejs-22", "python-3.12"]
+
+[[artifacts]]
+id = "artifacts/api-server"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+build = "npm ci && NODE_ENV=production npm run typecheck && NODE_ENV=production npm run -w @workspace/chat-ui build && NODE_ENV=production npm run -w @workspace/api-server build"
+run = "NODE_ENV=production node artifacts/api-server/dist/index.mjs"
+
+[deployment.health]
+startupPath = "/api/healthz"
+
+[workflows]
+runButton = "Project"
+
+[agent]
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[nix]
+channel = "stable-25_05"
+packages = ["unzipNLS", "chromium", "tmux"]
+
+[userenv]
+
+[[ports]]
+localPort = 1455
+externalPort = 3000
+exposeLocalhost = true
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 9889
