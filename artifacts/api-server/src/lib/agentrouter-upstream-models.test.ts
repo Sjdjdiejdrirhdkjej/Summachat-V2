@@ -62,7 +62,7 @@ describe("agentrouter-upstream-models", () => {
     );
   });
 
-  it("skips AgentRouter mapping when direct keys are available", () => {
+  it("maps when AgentRouter is configured even with direct keys present", () => {
     process.env.AGENTROUTER_API_KEY = "test-key";
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "direct-key";
     process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://direct";
@@ -70,12 +70,12 @@ describe("agentrouter-upstream-models", () => {
     process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL = "https://direct";
     process.env.AI_INTEGRATIONS_GEMINI_API_KEY = "direct-key";
     process.env.AI_INTEGRATIONS_GEMINI_BASE_URL = "https://direct";
-    expect(resolveOpenAiUpstreamModel("gpt-5.2")).toBe("gpt-5.2");
+    expect(resolveOpenAiUpstreamModel("gpt-5.2")).toBe("gpt-5.1");
     expect(resolveAnthropicUpstreamModel("claude-opus-4-6")).toBe(
-      "claude-opus-4-6",
+      "claude-opus-4-20250514",
     );
     expect(resolveGeminiUpstreamModel("gemini-3.1-pro-preview")).toBe(
-      "gemini-3.1-pro-preview",
+      "gemini-3-pro-preview",
     );
   });
 });

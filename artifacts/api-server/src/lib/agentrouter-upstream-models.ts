@@ -48,21 +48,21 @@ const GEMINI_AGENTROUTER: Record<string, string> = {
 };
 
 export function resolveOpenAiUpstreamModel(internalModel: string): string {
-  if (hasDirectOpenAiKeys() || !isAgentRouterUpstreamMode()) {
+  if (!isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return OPENAI_AGENTROUTER[internalModel] ?? internalModel;
 }
 
 export function resolveAnthropicUpstreamModel(internalModel: string): string {
-  if (hasDirectAnthropicKeys() || !isAgentRouterUpstreamMode()) {
+  if (!isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return ANTHROPIC_AGENTROUTER[internalModel] ?? internalModel;
 }
 
 export function resolveGeminiUpstreamModel(internalModel: string): string {
-  if (hasDirectGeminiKeys() || !isAgentRouterUpstreamMode()) {
+  if (!isAgentRouterUpstreamMode()) {
     return internalModel;
   }
   return GEMINI_AGENTROUTER[internalModel] ?? internalModel;

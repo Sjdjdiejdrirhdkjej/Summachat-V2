@@ -31,15 +31,7 @@ function getClient(): OpenAI | null {
 
   initialized = true;
 
-  // Path 1: Direct API keys (preferred)
-  const integrationsKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  const integrationsBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  if (integrationsKey && integrationsBase) {
-    client = new OpenAI({ apiKey: integrationsKey, baseURL: integrationsBase });
-    return client;
-  }
-
-  // Path 2: AgentRouter (fallback proxy)
+  // Path 1: AgentRouter (preferred when configured)
   const agentRouterKey = process.env.AGENTROUTER_API_KEY;
   if (agentRouterKey) {
     const proxyUrl = process.env.AGENTROUTER_PROXY_URL;
@@ -48,6 +40,14 @@ function getClient(): OpenAI | null {
       : "https://agentrouter.org/v1";
 
     client = new OpenAI({ apiKey: agentRouterKey, baseURL, fetch: wafGuardedFetch });
+    return client;
+  }
+
+  // Path 2: Direct API keys (fallback)
+  const integrationsKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const integrationsBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  if (integrationsKey && integrationsBase) {
+    client = new OpenAI({ apiKey: integrationsKey, baseURL: integrationsBase });
     return client;
   }
 
