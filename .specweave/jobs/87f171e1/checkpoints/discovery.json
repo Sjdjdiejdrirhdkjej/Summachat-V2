@@ -1,0 +1,258 @@
+{
+  "codebaseStats": {
+    "totalFiles": 384,
+    "totalDirs": 77,
+    "byExtension": {
+      ".md": 19,
+      ".history": 1,
+      ".local": 1,
+      "": 9,
+      ".backup": 1,
+      ".mjs": 2,
+      ".json": 34,
+      ".ts": 167,
+      ".html": 2,
+      ".svg": 1,
+      ".png": 3,
+      ".jpg": 1,
+      ".tsx": 126,
+      ".css": 2,
+      ".lock": 1,
+      ".tsbuildinfo": 8,
+      ".yaml": 1,
+      ".js": 2,
+      ".tgz": 1,
+      ".sh": 1,
+      ".gz": 1
+    },
+    "byType": {
+      "code": 285,
+      "tests": 12,
+      "docs": 19,
+      "config": 35,
+      "assets": 33
+    },
+    "estimatedLOC": 27954
+  },
+  "techStack": {
+    "languages": [
+      "TypeScript"
+    ],
+    "frameworks": [],
+    "buildTools": [],
+    "testFrameworks": [],
+    "detectedFrom": [
+      "package.json"
+    ]
+  },
+  "existingDocs": {
+    "readme": "README.md",
+    "contributing": null,
+    "docsFolder": null,
+    "wikiFolder": null,
+    "mdFiles": [
+      ".aider.chat.history.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "README.md",
+      "replit.md"
+    ]
+  },
+  "entryPoints": {
+    "main": [],
+    "index": [],
+    "exports": []
+  },
+  "modules": [
+    {
+      "name": "api-zod",
+      "path": "lib/api-zod",
+      "fileCount": 61,
+      "estimatedLOC": 887,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/generated/types/index.ts",
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".ts": 57,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "integrations",
+      "path": "lib/integrations",
+      "fileCount": 16,
+      "estimatedLOC": 913,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "anthropic_ai_integrations/src/server/batch/index.ts",
+        "gemini_ai_integrations/src/server/batch/index.ts",
+        "openai_ai_integrations/src/client/audio/index.ts",
+        "openai_ai_integrations/src/server/audio/index.ts",
+        "openai_ai_integrations/src/server/batch/index.ts",
+        "openai_ai_integrations/src/server/image/index.ts"
+      ],
+      "extensions": {
+        ".ts": 15,
+        ".js": 1
+      }
+    },
+    {
+      "name": "integrations-openai-ai-server",
+      "path": "lib/integrations-openai-ai-server",
+      "fileCount": 12,
+      "estimatedLOC": 539,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/audio/index.ts",
+        "src/batch/index.ts",
+        "src/image/index.ts",
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".ts": 8,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "integrations-openai-ai-react",
+      "path": "lib/integrations-openai-ai-react",
+      "fileCount": 11,
+      "estimatedLOC": 562,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/audio/index.ts",
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".js": 1,
+        ".ts": 6,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "db",
+      "path": "lib/db",
+      "fileCount": 10,
+      "estimatedLOC": 89,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/index.ts",
+        "src/schema/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".ts": 6,
+        ".json": 2,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "integrations-gemini-ai",
+      "path": "lib/integrations-gemini-ai",
+      "fileCount": 10,
+      "estimatedLOC": 211,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/batch/index.ts",
+        "src/image/index.ts",
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".ts": 6,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "api-client-react",
+      "path": "lib/api-client-react",
+      "fileCount": 8,
+      "estimatedLOC": 1405,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".ts": 4,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "integrations-anthropic-ai",
+      "path": "lib/integrations-anthropic-ai",
+      "fileCount": 8,
+      "estimatedLOC": 191,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [
+        "src/batch/index.ts",
+        "src/index.ts"
+      ],
+      "extensions": {
+        ".md": 1,
+        ".json": 2,
+        ".ts": 4,
+        ".tsbuildinfo": 1
+      }
+    },
+    {
+      "name": "api-spec",
+      "path": "lib/api-spec",
+      "fileCount": 4,
+      "estimatedLOC": 64,
+      "hasTests": false,
+      "hasReadme": false,
+      "entryPoints": [],
+      "extensions": {
+        ".md": 1,
+        ".yaml": 1,
+        ".ts": 1,
+        ".json": 1
+      }
+    }
+  ],
+  "tier": "small",
+  "samplingConfig": {
+    "tier": "small",
+    "filesPerDir": "all",
+    "priorityPatterns": [
+      "**/index.*",
+      "**/main.*",
+      "**/*.config.*",
+      "**/types.*"
+    ],
+    "skipPatterns": [
+      "node_modules/**",
+      "dist/**",
+      "**/*.test.*",
+      "**/*.spec.*"
+    ]
+  },
+  "discoveredAt": "2026-04-03T22:24:58.469Z",
+  "languagesDetected": [
+    "typescript"
+  ],
+  "umbrella": {
+    "isUmbrella": false,
+    "source": "none",
+    "childRepoCount": 0
+  }
+}

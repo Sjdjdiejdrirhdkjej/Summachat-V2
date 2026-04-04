@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "autoReflect": true,
+  "enabledAt": "2026-04-03T22:24:55.236Z",
+  "confidenceThreshold": "medium",
+  "maxLearningsPerSession": 10,
+  "gitCommit": false,
+  "gitPush": false
+}

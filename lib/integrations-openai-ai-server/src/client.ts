@@ -31,7 +31,7 @@ function getClient(): OpenAI | null {
 
   initialized = true;
 
-  // Path 1: Replit AI Integrations (direct, preferred)
+  // Path 1: Direct API keys (preferred)
   const integrationsKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   const integrationsBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
   if (integrationsKey && integrationsBase) {

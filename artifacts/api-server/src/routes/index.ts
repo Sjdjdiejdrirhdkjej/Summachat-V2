@@ -2,6 +2,7 @@ import { Router, type IRouter, type RequestHandler } from "express";
 import healthRouter from "./health";
 
 const router: IRouter = Router();
+const isProduction = process.env["NODE_ENV"] === "production";
 
 router.use(healthRouter);
 
@@ -11,8 +12,6 @@ function toErrorMessage(error: unknown): string {
     : "Unknown route initialization error";
 }
 
-// Defer routes with provider/database dependencies so deployments can start and
-// answer health checks before every optional secret is configured.
 function lazyRoute(
   load: () => Promise<{ default: RequestHandler }>,
 ): RequestHandler {
@@ -37,7 +36,7 @@ function lazyRoute(
 
         res.status(503).json({
           error: "Service temporarily unavailable",
-          message: toErrorMessage(error),
+          message: isProduction ? undefined : toErrorMessage(error),
         });
         return;
       }

@@ -1,7 +1,7 @@
 /**
  * When requests actually go through agentrouter.org, model IDs differ from our
- * app-level aliases (Replit modelfarm names). Map internal IDs to upstream IDs
- * only in that mode; Replit AI integrations keep the original names.
+ * app-level aliases. Map internal IDs to upstream IDs only in that mode;
+ * direct AI integrations keep the original names.
  *
  * AgentRouter is only used as a fallback when direct AI integration keys are
  * not configured for a given provider.

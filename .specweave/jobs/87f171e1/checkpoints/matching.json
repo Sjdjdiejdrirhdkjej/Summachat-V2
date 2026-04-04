@@ -1,0 +1,74 @@
+{
+  "completedAt": "2026-04-03T22:24:58.943Z",
+  "stats": {
+    "totalWorkItems": 0,
+    "matchedWorkItems": 0,
+    "unmatchedWorkItems": 0,
+    "modulesWithWorkItems": 0
+  },
+  "priorityQueue": [
+    {
+      "moduleName": "api-zod",
+      "modulePath": "lib/api-zod",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "integrations",
+      "modulePath": "lib/integrations",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "integrations-openai-ai-server",
+      "modulePath": "lib/integrations-openai-ai-server",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "integrations-openai-ai-react",
+      "modulePath": "lib/integrations-openai-ai-react",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "db",
+      "modulePath": "lib/db",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "integrations-gemini-ai",
+      "modulePath": "lib/integrations-gemini-ai",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "api-client-react",
+      "modulePath": "lib/api-client-react",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "integrations-anthropic-ai",
+      "modulePath": "lib/integrations-anthropic-ai",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    },
+    {
+      "moduleName": "api-spec",
+      "modulePath": "lib/api-spec",
+      "workItemCount": 0,
+      "priority": "low",
+      "topWorkItems": []
+    }
+  ]
+}

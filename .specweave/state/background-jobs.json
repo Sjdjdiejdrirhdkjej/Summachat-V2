@@ -1,0 +1,29 @@
+{
+  "jobs": [
+    {
+      "id": "87f171e1",
+      "type": "living-docs-builder",
+      "status": "completed",
+      "progress": {
+        "current": 0,
+        "total": 100,
+        "percentage": 0,
+        "itemsCompleted": [],
+        "itemsFailed": []
+      },
+      "startedAt": "2026-04-03T22:24:58.366Z",
+      "updatedAt": "2026-04-03T22:24:58.984Z",
+      "config": {
+        "type": "living-docs-builder",
+        "projectPath": "/home/runner/workspace",
+        "userInputs": {
+          "analysisDepth": "quick",
+          "priorityAreas": [],
+          "additionalSources": [],
+          "knownPainPoints": []
+        }
+      },
+      "completedAt": "2026-04-03T22:24:58.984Z"
+    }
+  ]
+}

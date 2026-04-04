@@ -10,9 +10,12 @@ import {
   type ResearchRunEventEnvelope,
   type ResearchRunSnapshot,
 } from "@workspace/api-zod";
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { ai as gemini } from "@workspace/integrations-gemini-ai";
+import { tryGetOpenAiClient } from "@workspace/integrations-openai-ai-server";
+import { tryGetAnthropicClient } from "@workspace/integrations-anthropic-ai";
+import {
+  ai as gemini,
+  isGeminiAvailable,
+} from "@workspace/integrations-gemini-ai";
 import Exa from "exa-js";
 
 import { EvidenceLedger } from "../lib/deep-research/evidence-ledger.js";
@@ -22,8 +25,10 @@ import {
   createDefaultConfig,
   researchRunStore,
 } from "../lib/deep-research/run-store.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
+const isProduction = process.env["NODE_ENV"] === "production";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -99,6 +104,20 @@ function launchResearchRun(
   runId: string,
   request: ResearchRunCreateRequest,
 ): void {
+  const openai = tryGetOpenAiClient();
+  const anthropic = tryGetAnthropicClient();
+  const geminiAvailable = isGeminiAvailable();
+
+  if (!openai || !anthropic || !geminiAvailable) {
+    const missing: string[] = [];
+    if (!openai) missing.push("OpenAI");
+    if (!anthropic) missing.push("Anthropic");
+    if (!geminiAvailable) missing.push("Gemini");
+    throw new Error(
+      `Research requires all AI providers. Missing: ${missing.join(", ")}`,
+    );
+  }
+
   const abortController = new AbortController();
   activeRuns.set(runId, abortController);
 
@@ -182,15 +201,16 @@ router.post("/runs", (req, res) => {
     if (error instanceof SaturationError) {
       res.status(503).json({
         error: "Service temporarily unavailable",
-        message: error.message,
+        message: isProduction ? undefined : error.message,
       });
       return;
     }
 
+    logger.error({ err: error }, "Research run creation error");
     const message = error instanceof Error ? error.message : "Unknown error";
     res.status(500).json({
       error: "Internal server error",
-      message,
+      message: isProduction ? undefined : message,
     });
   }
 });

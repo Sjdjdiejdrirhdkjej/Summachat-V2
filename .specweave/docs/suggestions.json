@@ -1,0 +1,150 @@
+{
+  "generatedAt": "2026-04-03T22:24:58.959Z",
+  "summary": {
+    "totalModules": 9,
+    "modulesDocumented": 0,
+    "modulesPartial": 5,
+    "modulesUndocumented": 4,
+    "totalWorkItems": 0,
+    "matchedWorkItems": 0,
+    "coveragePercent": 22
+  },
+  "priorityZones": [],
+  "immediateActions": [
+    {
+      "priority": 1,
+      "module": "api-zod",
+      "action": "Add README based on existing test cases",
+      "files": [
+        "lib/api-zod/README.md"
+      ],
+      "reason": "Has test coverage but lacks documentation"
+    },
+    {
+      "priority": 2,
+      "module": "integrations",
+      "action": "Add README based on existing test cases",
+      "files": [
+        "lib/integrations/README.md"
+      ],
+      "reason": "Has test coverage but lacks documentation"
+    }
+  ],
+  "moduleStatuses": [
+    {
+      "moduleName": "api-zod",
+      "modulePath": "lib/api-zod",
+      "hasReadme": false,
+      "hasAnalysis": true,
+      "coverage": 40,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "partial"
+    },
+    {
+      "moduleName": "integrations",
+      "modulePath": "lib/integrations",
+      "hasReadme": false,
+      "hasAnalysis": true,
+      "coverage": 40,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "partial"
+    },
+    {
+      "moduleName": "integrations-openai-ai-server",
+      "modulePath": "lib/integrations-openai-ai-server",
+      "hasReadme": false,
+      "hasAnalysis": true,
+      "coverage": 40,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "partial"
+    },
+    {
+      "moduleName": "integrations-openai-ai-react",
+      "modulePath": "lib/integrations-openai-ai-react",
+      "hasReadme": false,
+      "hasAnalysis": true,
+      "coverage": 40,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "partial"
+    },
+    {
+      "moduleName": "db",
+      "modulePath": "lib/db",
+      "hasReadme": false,
+      "hasAnalysis": true,
+      "coverage": 40,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "partial"
+    },
+    {
+      "moduleName": "integrations-gemini-ai",
+      "modulePath": "lib/integrations-gemini-ai",
+      "hasReadme": false,
+      "hasAnalysis": false,
+      "coverage": 0,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "none"
+    },
+    {
+      "moduleName": "api-client-react",
+      "modulePath": "lib/api-client-react",
+      "hasReadme": false,
+      "hasAnalysis": false,
+      "coverage": 0,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "none"
+    },
+    {
+      "moduleName": "integrations-anthropic-ai",
+      "modulePath": "lib/integrations-anthropic-ai",
+      "hasReadme": false,
+      "hasAnalysis": false,
+      "coverage": 0,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "none"
+    },
+    {
+      "moduleName": "api-spec",
+      "modulePath": "lib/api-spec",
+      "hasReadme": false,
+      "hasAnalysis": false,
+      "coverage": 0,
+      "workItemCount": 0,
+      "priority": "low",
+      "status": "none"
+    }
+  ],
+  "additionalSources": [],
+  "notAnalyzed": [
+    {
+      "path": "lib/integrations-gemini-ai",
+      "reason": "Analysis skipped",
+      "filesSkipped": 10
+    },
+    {
+      "path": "lib/api-client-react",
+      "reason": "Analysis skipped",
+      "filesSkipped": 8
+    },
+    {
+      "path": "lib/integrations-anthropic-ai",
+      "reason": "Analysis skipped",
+      "filesSkipped": 8
+    },
+    {
+      "path": "lib/api-spec",
+      "reason": "Analysis skipped",
+      "filesSkipped": 4
+    }
+  ],
+  "painPointsAddressed": [],
+  "isUmbrella": false
+}

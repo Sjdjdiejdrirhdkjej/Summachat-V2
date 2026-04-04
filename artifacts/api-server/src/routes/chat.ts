@@ -1,10 +1,6 @@
 import { Router } from "express";
-import {
-  tryGetOpenAiClient,
-} from "@workspace/integrations-openai-ai-server";
-import {
-  tryGetAnthropicClient,
-} from "@workspace/integrations-anthropic-ai";
+import { tryGetOpenAiClient } from "@workspace/integrations-openai-ai-server";
+import { tryGetAnthropicClient } from "@workspace/integrations-anthropic-ai";
 import {
   ai,
   getActiveProvider as getGeminiActiveProvider,
@@ -30,16 +26,20 @@ const MODELS = {
   "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
 } as const;
 
+const MAX_MESSAGE_LENGTH = 100_000; // 100KB per message
+const MAX_MESSAGES = 100; // Reasonable conversation history limit
+
 const ChatSchema = z.object({
   model: z.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]),
   messages: z
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string().min(1),
+        content: z.string().min(1).max(MAX_MESSAGE_LENGTH),
       }),
     )
-    .min(1),
+    .min(1)
+    .max(MAX_MESSAGES),
   webSearch: z.boolean().optional().default(false),
 });
 
@@ -58,7 +58,7 @@ type StreamRequestContext = {
 type ChatProvider = z.infer<typeof ChatSchema>["model"];
 
 const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
-const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
+const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 90_000; // Increased from 45s to prevent premature connection drops
 const GEMINI_OVERALL_TIMEOUT_MS = 600_000;
 const GEMINI_FIRST_CHUNK_TIMEOUT_MS = 180_000;
 
@@ -297,6 +297,15 @@ router.post("/chat", async (req, res) => {
 
   let connectionClosed = false;
   let streamFinalized = false;
+
+  const heartbeatInterval = setInterval(() => {
+    if (!connectionClosed && !res.writableEnded && !res.destroyed) {
+      res.write(": heartbeat\n\n");
+      const flushable = res as typeof res & { flush?: () => void };
+      flushable.flush?.();
+    }
+  }, 15000);
+
   req.on("aborted", () => {
     connectionClosed = true;
     if (!streamFinalized) {
@@ -465,6 +474,7 @@ router.post("/chat", async (req, res) => {
       "chat_route_errored",
     );
   } finally {
+    clearInterval(heartbeatInterval);
     streamFinalized = true;
     const sentDone = send({ type: "done" });
     if (!sentDone) {

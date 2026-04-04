@@ -31,7 +31,7 @@ function getClient(): Anthropic | null {
 
   initialized = true;
 
-  // Path 1: Replit AI Integrations (direct, preferred)
+  // Path 1: Direct API keys (preferred)
   const integrationsKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
   const integrationsBase = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
   if (integrationsKey && integrationsBase) {

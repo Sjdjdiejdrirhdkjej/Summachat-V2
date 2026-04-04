@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-04-03T22:24:58.942Z",
+  "stats": {
+    "totalWorkItems": 0,
+    "matchedWorkItems": 0,
+    "unmatchedWorkItems": 0,
+    "modulesWithWorkItems": 0
+  },
+  "modules": {
+    "api-zod": {
+      "moduleName": "api-zod",
+      "modulePath": "lib/api-zod",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "integrations": {
+      "moduleName": "integrations",
+      "modulePath": "lib/integrations",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "integrations-openai-ai-server": {
+      "moduleName": "integrations-openai-ai-server",
+      "modulePath": "lib/integrations-openai-ai-server",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "integrations-openai-ai-react": {
+      "moduleName": "integrations-openai-ai-react",
+      "modulePath": "lib/integrations-openai-ai-react",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "db": {
+      "moduleName": "db",
+      "modulePath": "lib/db",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "integrations-gemini-ai": {
+      "moduleName": "integrations-gemini-ai",
+      "modulePath": "lib/integrations-gemini-ai",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "api-client-react": {
+      "moduleName": "api-client-react",
+      "modulePath": "lib/api-client-react",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "integrations-anthropic-ai": {
+      "moduleName": "integrations-anthropic-ai",
+      "modulePath": "lib/integrations-anthropic-ai",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    },
+    "api-spec": {
+      "moduleName": "api-spec",
+      "modulePath": "lib/api-spec",
+      "matches": [],
+      "workItemCount": 0,
+      "priority": "low",
+      "docStatus": "none"
+    }
+  },
+  "unmatchedItems": []
+}

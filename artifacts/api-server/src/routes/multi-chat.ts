@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { ai } from "@workspace/integrations-gemini-ai";
+import { tryGetOpenAiClient } from "@workspace/integrations-openai-ai-server";
+import { tryGetAnthropicClient } from "@workspace/integrations-anthropic-ai";
+import { ai, isGeminiAvailable } from "@workspace/integrations-gemini-ai";
 import {
   buildWebContext,
   searchWeb,
@@ -50,7 +50,7 @@ type StreamRequestContext = {
 };
 
 const PROVIDER_OVERALL_TIMEOUT_MS = 120_000;
-const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 45_000;
+const PROVIDER_FIRST_CHUNK_TIMEOUT_MS = 90_000; // Increased from 45s to prevent premature connection drops
 const PROVIDER_HARD_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS + 10_000;
 const GEMINI_OVERALL_TIMEOUT_MS = 600_000;
 const GEMINI_FIRST_CHUNK_TIMEOUT_MS = 180_000;
@@ -59,11 +59,15 @@ const SUMMARIZER_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_OVERALL_TIMEOUT_MS;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
+const MAX_PROMPT_LENGTH = 100_000;
+const MAX_HISTORY_LENGTH = 50;
+
 const MultiChatSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().min(1).max(MAX_PROMPT_LENGTH),
   models: z
     .array(z.enum(["gpt-5.2", "claude-opus-4-6", "gemini-3.1-pro-preview"]))
     .min(2)
+    .max(3)
     .refine((models) => new Set(models).size === models.length, {
       message: "Models must be unique",
     }),
@@ -73,9 +77,10 @@ const MultiChatSchema = z.object({
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string(),
+        content: z.string().max(MAX_PROMPT_LENGTH),
       }),
     )
+    .max(MAX_HISTORY_LENGTH)
     .optional()
     .default([]),
 });
@@ -87,6 +92,17 @@ async function callGPT(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const openai = tryGetOpenAiClient();
+  if (!openai) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("OpenAI integration is not configured"),
+    };
+  }
+
   const messages: { role: "system" | "user" | "assistant"; content: string }[] =
     [];
   if (webContext) messages.push({ role: "system", content: webContext });
@@ -126,6 +142,17 @@ async function callClaude(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const anthropic = tryGetAnthropicClient();
+  if (!anthropic) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Anthropic integration is not configured"),
+    };
+  }
+
   const claudeMessages = [
     ...history.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -195,6 +222,16 @@ async function callGemini(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  if (!isGeminiAvailable()) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Gemini integration is not configured"),
+    };
+  }
+
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [];
   for (const msg of history) {
     contents.push({
@@ -468,6 +505,17 @@ async function callClaudeTask(
   context: StreamRequestContext,
   firstChunkTimeoutMs = PROVIDER_FIRST_CHUNK_TIMEOUT_MS,
 ): Promise<GuardedProviderStreamResult> {
+  const anthropic = tryGetAnthropicClient();
+  if (!anthropic) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Anthropic integration is not configured"),
+    };
+  }
+
   return runGuardedProviderStream({
     provider,
     requestId: context.requestId,
@@ -617,6 +665,17 @@ async function callImageModeModel(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const openai = tryGetOpenAiClient();
+  if (!openai) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("OpenAI integration is not configured"),
+    };
+  }
+
   const userMessage = `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}\n\nOutput ONLY your improved prompt - no explanations, no quotes, just the prompt text that will produce an excellent image.`;
 
   return runGuardedProviderStream({
@@ -652,6 +711,17 @@ async function callImageModeClaude(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  const anthropic = tryGetAnthropicClient();
+  if (!anthropic) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Anthropic integration is not configured"),
+    };
+  }
+
   const userMessage = `User's image request: "${prompt}"${webContext ? `\n\nWeb context: ${webContext}` : ""}\n\nOutput ONLY your improved prompt - no explanations, no quotes, just the prompt text that will produce an excellent image.`;
 
   return runGuardedProviderStream({
@@ -689,6 +759,16 @@ async function callImageModeGemini(
   onChunk: (text: string) => void,
   context: StreamRequestContext,
 ): Promise<GuardedProviderStreamResult> {
+  if (!isGeminiAvailable()) {
+    return {
+      status: "errored",
+      output: "",
+      firstChunkMs: null,
+      totalMs: 0,
+      error: new Error("Gemini integration is not configured"),
+    };
+  }
+
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     {
       role: "user",
@@ -951,7 +1031,7 @@ async function invokeModelWithGuard(
   let modelFinalized = false;
   const modelAbortController = new AbortController();
   const maxAttempts = 3;
-  const retryDelayMs = 350;
+  const retryDelayMs = 1500; // Increased from 350ms to give provider/proxy time to recover
 
   const emitModelDone = () => {
     if (terminalEmitted) return;
@@ -1100,10 +1180,10 @@ router.post("/multi-chat", async (req, res) => {
   let imageOwnerId: string | undefined;
   if (mode === "image") {
     imageOwnerId = getOrCreateAnonymousOwnerId(req);
-    // Set cookie for owner ID
     res.cookie("imagegen_owner_id", imageOwnerId, {
       path: "/",
       httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
       sameSite: "strict",
       maxAge: 31536000 * 1000,
     });
@@ -1118,6 +1198,15 @@ router.post("/multi-chat", async (req, res) => {
   res.flushHeaders();
 
   let connectionClosed = false;
+
+  const heartbeatInterval = setInterval(() => {
+    if (!connectionClosed && !res.writableEnded && !res.destroyed) {
+      res.write(": heartbeat\n\n");
+      const flushable = res as typeof res & { flush?: () => void };
+      flushable.flush?.();
+    }
+  }, 15000);
+
   req.on("aborted", () => {
     connectionClosed = true;
     if (!streamAbortController.signal.aborted) {
@@ -1410,6 +1499,7 @@ router.post("/multi-chat", async (req, res) => {
       }
     }
   } finally {
+    clearInterval(heartbeatInterval);
     send({ type: "done" });
     res.end();
   }

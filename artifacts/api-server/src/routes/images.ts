@@ -11,9 +11,11 @@ import { generateNormalizedProviderImage } from "../lib/image-generation/provide
 import { getImageStorage } from "../lib/image-generation/storage";
 import { createHash, randomUUID } from "node:crypto";
 import { getOrCreateAnonymousOwnerId } from "../lib/anonymous-owner.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 const imageStorage = getImageStorage();
+const isProduction = process.env["NODE_ENV"] === "production";
 
 // Create image generation
 router.post(
@@ -106,10 +108,14 @@ router.post(
       });
       return;
     } catch (error) {
-      console.error("Image generation error:", error);
+      logger.error({ err: error }, "Image generation error");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: isProduction
+          ? undefined
+          : error instanceof Error
+            ? error.message
+            : "Unknown error",
       });
       return;
     }
@@ -149,16 +155,20 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
       sameSite: "strict",
-      maxAge: 31536000 * 1000, // 1 year in milliseconds
+      maxAge: 31536000 * 1000,
     });
 
     res.json(response);
     return;
   } catch (error) {
-    console.error("List images error:", error);
+    logger.error({ err: error }, "List images error");
     res.status(500).json({
       error: "Internal server error",
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: isProduction
+        ? undefined
+        : error instanceof Error
+          ? error.message
+          : "Unknown error",
     });
     return;
   }
@@ -192,7 +202,6 @@ router.get(
         return;
       }
 
-      // Retrieve from storage
       const streamResult = await imageStorage.readStream(image.storageKey);
 
       if (streamResult.status === "not_found") {
@@ -200,19 +209,21 @@ router.get(
         return;
       }
 
-      // Set appropriate headers
       res.setHeader("Content-Type", image.mimeType);
       res.setHeader("Cache-Control", "public, max-age=31536000");
       res.setHeader("ETag", image.sha256);
 
-      // Stream the image
       streamResult.stream.pipe(res);
       return;
     } catch (error) {
-      console.error("Get image content error:", error);
+      logger.error({ err: error }, "Get image content error");
       res.status(500).json({
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: isProduction
+          ? undefined
+          : error instanceof Error
+            ? error.message
+            : "Unknown error",
       });
       return;
     }

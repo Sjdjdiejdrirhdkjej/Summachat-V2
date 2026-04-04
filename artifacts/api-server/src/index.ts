@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 
-// Default to 8080 so Replit artifacts, deployment, and the Chat UI proxy all agree.
+// Default to 8080 so the Chat UI proxy and deployment agree.
 const rawPort = process.env["PORT"] ?? "8080";
 const host = process.env["HOST"] ?? "0.0.0.0";
 

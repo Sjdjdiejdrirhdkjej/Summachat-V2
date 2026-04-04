@@ -1,0 +1,12 @@
+{
+  "jobId": "87f171e1",
+  "projectPath": "/home/runner/workspace",
+  "userInputs": {
+    "analysisDepth": "quick",
+    "priorityAreas": [],
+    "additionalSources": [],
+    "knownPainPoints": []
+  },
+  "dependsOn": [],
+  "startedAt": "2026-04-03T22:24:58.367Z"
+}

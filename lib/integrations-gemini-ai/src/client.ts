@@ -20,7 +20,7 @@ function getPrimaryClient(): GoogleGenAI | null {
 
   primaryInitialized = true;
 
-  // Path 1: Replit AI Integrations (direct, preferred)
+  // Path 1: Direct API keys (preferred)
   const integrationsKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const integrationsBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   if (integrationsKey && integrationsBase) {

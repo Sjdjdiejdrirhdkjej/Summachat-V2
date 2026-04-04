@@ -12,20 +12,30 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 
 - **Package manager**: `npm` or `bun` (both supported interchangeably, enforced via preinstall script).
 - **Runtime/tooling baseline**: Node.js 24, TypeScript 5.9.
-- **Monorepo layout**: npm workspaces with 14+ packages.
+- **Monorepo layout**: npm workspaces with 19 packages.
 - **Root workspace globs**: `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`.
-- **TypeScript**: Project references with `customConditions: ["workspace"]`.
+- **TypeScript**: Project references with `customConditions: ["workspace"]`, strict baseline from `tsconfig.base.json`.
 - **Prettier**: Installed, no repo-defined format script.
-- **Test framework**: Vitest (jsdom for UI, node for server).
+- **No ESLint**: No repo-level eslint config — follow adjacent file style.
+- **Test framework**: Vitest v3.2.4 (node environment for both api-server and chat-ui).
 
 ## Testing
 
 - **Framework**: Vitest v3.2.4 (sole test runner).
 - **Test files**: `*.test.{ts,tsx}` pattern, co-located with source files.
-- **Run all**: `npm run test` from root.
-- **Run package**: `npm run -w @workspace/<name> test`.
+- **Run package**: `npm run -w @workspace/<name> test` (api-server or chat-ui only).
+- **No root test**: Root has no `npm run test` command — use workspace flags.
 - **Setup files**: `./src/test-setup.ts` per package.
 - **Libraries**: `@testing-library/react` for UI, `supertest` for API routes.
+- **Environment**: Both api-server and chat-ui use `node` env (chat-ui uses jsdom via react-testing-library).
+
+## TypeScript Strictness
+
+Root `tsconfig.base.json` enforces strict baseline:
+
+- `noImplicitAny`, `strictNullChecks`, `strictPropertyInitialization`: true
+- `useUnknownInCatchVariables`, `noImplicitReturns`, `noImplicitOverride`: true
+- **Deviations**: `strictFunctionTypes: false`, `noUnusedLocals: false`
 
 ## Directory map
 
@@ -133,7 +143,6 @@ Repository guidance for coding agents working in `/home/runner/workspace`.
 - Database code follows a schema-plus-inferred-types pattern using Drizzle ORM with PostgreSQL.
 - Server logging uses pino with redaction of sensitive headers/cookies.
 - API server build: custom `build.mjs` (esbuild with 80+ externals, not tsup/tsx).
-- Vite configs conditionally load Replit plugins when `REPL_ID` env var is set.
 - Root `package.json` has aggressive dependency overrides (esbuild, undici, yaml, tar) — don't change without reason.
 - Environment variables for AI integrations use `AI_INTEGRATIONS_*` prefix (e.g., `AI_INTEGRATIONS_ANTHROPIC_API_KEY`).
 - API server uses lazy route loading pattern in `src/routes/index.ts` for provider-dependent routes.
@@ -179,10 +188,12 @@ See `lib/integrations-openai-ai-server/AGENTS.md` for OpenAI-specific convention
 ## Build and CI notes
 
 - **No CI/CD**: No GitHub Actions, no Makefile — all builds are manual via npm scripts
-- **API server build**: Custom `build.mjs` (esbuild with 80+ externals), not tsup/tsx
+- **API server build**: Custom `build.mjs` (esbuild with 80+ externals, `SOURCEMAP=1` for linked source maps), not tsup/tsx
 - **Drizzle migrations**: Uses schema push (`db push`), not traditional migration files
 - **Vitest**: Workspace config in root, but test scripts only in package `package.json`
-- **Replit plugins**: Vite configs conditionally load plugins when `REPL_ID` env var is set
+- **Vercel deployment**: `vercel.json` builds only chat-ui; api-server deploys separately
+- **Post-merge hook**: `scripts/post-merge.sh` runs `npm ci` + `db push` after git merges
+- **preinstall guard**: Root package.json enforces `npm` or `bun` only (blocks yarn/pnpm)
 
 ## Structural deviations from standard TypeScript monorepo
 
@@ -204,6 +215,7 @@ See `lib/integrations-openai-ai-server/AGENTS.md` for OpenAI-specific convention
 - **Do not use `require()`** — use ESM imports only
 - **`dist/` in lib/db is read-only** — declaration-only output, never edit
 - **Fail fast on missing env vars** — don't defer checks in integration packages
+- **Do not add explanations, markdown, or commentary in prompt generation output** — write ONLY the improved prompt
 
 ## Working norms for agents
 
