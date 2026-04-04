@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -15,7 +15,10 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/app.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",
@@ -134,6 +137,20 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Generate a declaration file so the Vercel serverless function
+  // (api/[[...path]].ts) can import the pre-built app.mjs under
+  // Vercel's node16/nodenext moduleResolution without type errors.
+  await writeFile(
+    path.resolve(distDir, "app.d.mts"),
+    [
+      'import type { IncomingMessage, ServerResponse } from "node:http";',
+      "type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void;",
+      "declare const app: RequestHandler;",
+      "export default app;",
+      "",
+    ].join("\n"),
+  );
 }
 
 buildAll().catch((err) => {

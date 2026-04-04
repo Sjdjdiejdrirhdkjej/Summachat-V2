@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "VITE_ALLOW_SAME_ORIGIN_API=1 npm run -w @workspace/chat-ui build",
+  "buildCommand": "NODE_ENV=production npm run -w @workspace/api-server build && VITE_ALLOW_SAME_ORIGIN_API=1 npm run -w @workspace/chat-ui build",
   "outputDirectory": "artifacts/chat-ui/dist/public",
   "functions": {
     "api/**/*.ts": {
